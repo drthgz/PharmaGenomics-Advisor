@@ -204,7 +204,10 @@ echo ""
 
 # Run the pipeline
 echo "2. Running pipeline..."
-python scripts/demo.py
+python3 scripts/demo.py
+
+# Optional: storytelling scenario (resistant EGFR + unrouted KRAS)
+python3 scripts/demo.py --vcf data/samples/sample_variants_storytelling.vcf
 
 # Show the output report
 echo "3. Clinical Report:"

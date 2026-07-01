@@ -39,40 +39,63 @@ bash scripts/setup.sh          # Linux/macOS
 # powershell scripts/setup.ps1  # Windows
 
 # Run tests
-python3 -m pytest tests/unit/ -v
+python3 -m pytest tests/unit tests/integration -v
 
 # Run the demo
 python3 scripts/demo.py
+
+# Optional: run storytelling demo with resistant EGFR + unrouted gene
+python3 scripts/demo.py --vcf data/samples/sample_variants_storytelling.vcf
 ```
 
 ---
 
 ## Architecture
 
+```mermaid
+flowchart LR
+        VCF[VCF Input] --> PARSE[Parse]
+        PARSE --> CLASSIFY[Classify]
+
+        subgraph SPECIALISTS[Parallel Specialist Agents]
+                BRCA[BRCA Agent]
+                EGFR[EGFR Agent]
+                TP53[TP53 Agent]
+        end
+
+        CLASSIFY --> BRCA
+        CLASSIFY --> EGFR
+        CLASSIFY --> TP53
+
+        BRCA --> CLINVAR[ClinVar MCP]
+        EGFR --> CLINVAR
+        TP53 --> CLINVAR
+
+        BRCA --> DRUG[Drug Recommendations]
+        EGFR --> DRUG
+        TP53 --> DRUG
+
+        DRUG --> CPIC[CPIC MCP]
+        DRUG --> PHARMGKB[PharmGKB MCP]
+        DRUG --> LIT[Literature]
+        LIT --> REPORT[Clinical Report]
+
+        OLLAMA[Ollama Local\nMedGemma / Gemma 4\nNo API Keys]:::infra
+        BRCA -.inference.-> OLLAMA
+        EGFR -.inference.-> OLLAMA
+        TP53 -.inference.-> OLLAMA
+        DRUG -.inference.-> OLLAMA
+        LIT -.inference.-> OLLAMA
+
+        classDef infra fill:#f4f4f4,stroke:#666,stroke-width:1px;
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                 ADK 2.0 Graph Workflow                          │
-│                                                                 │
-│  VCF → Parse → Classify → Drug Rec → Literature → Report      │
-│           │        │          │           │                     │
-│           │   ┌────┴────┐    │           │                     │
-│           │   │Parallel │    │           │                     │
-│           │   ├─ BRCA   │    │           │                     │
-│           │   ├─ EGFR   │    │           │                     │
-│           │   └─ TP53   │    │           │                     │
-│           │        │         │           │                     │
-│           │        ▼         ▼           ▼                     │
-│           │   [ClinVar]  [CPIC]     [ChromaDB]                │
-│           │    MCP       [PharmGKB]   Vector                   │
-│           │              MCP Servers   Store                   │
-└───────────────────────────────────────────────────────────────┘
-                         │
-              ┌──────────┴──────────┐
-              │  Ollama (Local)      │
-              │  MedGemma / Gemma 4  │
-              │  No API Keys         │
-              └─────────────────────┘
-```
+
+---
+
+## Demo Data
+
+- `data/samples/sample_variants.vcf`: baseline happy path (BRCA1, EGFR L858R, TP53)
+- `data/samples/sample_variants_storytelling.vcf`: storytelling path with EGFR T790M (resistant), KRAS unrouted, and BRCA1 actionable continuity
 
 ---
 
@@ -155,4 +178,3 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 Built for the Kaggle AI Agents Intensive Vibe Coding Capstone 2026 🧬
-`
