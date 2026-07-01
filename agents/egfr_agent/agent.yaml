@@ -1,0 +1,5 @@
+name: egfr_agent
+model: medgemma
+description: "Classifies EGFR variants and annotates therapeutic relevance for TKI therapy"
+tools:
+  - clinvar_variant_lookup

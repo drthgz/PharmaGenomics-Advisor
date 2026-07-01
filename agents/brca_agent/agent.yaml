@@ -1,0 +1,5 @@
+name: brca_agent
+model: medgemma
+description: "Classifies BRCA1/BRCA2 variants using ACMG/AMP criteria"
+tools:
+  - clinvar_variant_lookup

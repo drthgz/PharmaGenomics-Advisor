@@ -1,0 +1,6 @@
+name: pgx_advisor
+model: medgemma
+description: "Maps pathogenic variants to pharmacogenomics drug recommendations using CPIC and PharmGKB"
+tools:
+  - cpic_gene_drug_guidelines
+  - pharmgkb_annotations

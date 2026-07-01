@@ -1,0 +1,11 @@
+##fileformat=VCFv4.2
+##source=PharmaGenomicsAdvisorDemo
+##reference=GRCh38
+##INFO=<ID=Gene,Number=1,Type=String,Description="Gene name">
+##INFO=<ID=Type,Number=1,Type=String,Description="Variant type">
+##INFO=<ID=HGVS,Number=1,Type=String,Description="HGVS nomenclature">
+##INFO=<ID=Note,Number=1,Type=String,Description="Additional annotation">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr17	41234470	rs80357713	A	G	99.0	PASS	Gene=BRCA1;Type=missense;HGVS=NM_007294.3:c.185A>G
+chr7	55259515	rs121434568	T	G	95.0	PASS	Gene=EGFR;Type=missense;HGVS=NM_005228.5:c.2573T>G;Note=L858R
+chr17	7578406	rs28934576	C	T	88.0	PASS	Gene=TP53;Type=missense;HGVS=NM_000546.6:c.742C>T;Note=R248W

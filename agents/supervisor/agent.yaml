@@ -1,0 +1,15 @@
+name: supervisor
+model: medgemma
+description: "Orchestrates the PharmaGenomics Advisor pipeline — routes variants to specialist agents and assembles clinical reports"
+
+sub_agents:
+  - brca_agent
+  - egfr_agent
+  - tp53_agent
+  - pgx_advisor
+  - literature_rag
+
+tools:
+  - clinvar_variant_lookup
+  - cpic_gene_drug_guidelines
+  - pharmgkb_annotations

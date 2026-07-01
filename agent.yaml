@@ -1,0 +1,30 @@
+# PharmaGenomics Advisor — Agents CLI Configuration
+# Root agent configuration for the multi-agent pipeline
+
+name: pharmagenomics-advisor
+version: "0.1.0"
+description: "Multi-Agent Precision Medicine Pipeline for cancer variant interpretation and pharmacogenomics drug recommendations"
+
+model: medgemma
+
+agents:
+  - name: supervisor
+    path: agents/supervisor/
+  - name: brca_agent
+    path: agents/brca_agent/
+  - name: egfr_agent
+    path: agents/egfr_agent/
+  - name: tp53_agent
+    path: agents/tp53_agent/
+  - name: pgx_advisor
+    path: agents/pgx_advisor/
+  - name: literature_rag
+    path: agents/literature_rag/
+
+tools:
+  - name: clinvar
+    path: mcp_servers/clinvar_server.py
+  - name: cpic
+    path: mcp_servers/cpic_server.py
+  - name: pharmgkb
+    path: mcp_servers/pharmgkb_server.py

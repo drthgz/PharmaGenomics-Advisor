@@ -1,0 +1,5 @@
+name: tp53_agent
+model: medgemma
+description: "Classifies TP53 variants and annotates gain-of-function vs loss-of-function status"
+tools:
+  - clinvar_variant_lookup
