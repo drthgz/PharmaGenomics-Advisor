@@ -20,15 +20,11 @@
 git clone https://github.com/drthgz/pharmagenomics-advisor.git
 cd pharmagenomics-advisor
 
-# 2. Run the setup script (installs Ollama + pulls model + creates venv)
-bash setup.sh
+# 2. Run the setup script (installs Ollama + pulls model + installs deps)
+bash scripts/setup.sh
 
-# 3. Activate environment
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
-
-# 4. Run the demo
-python scripts/demo.py
+# 3. Run the demo
+python3 scripts/demo.py
 ```
 
 That's it. No API keys. No cloud accounts. No configuration.
@@ -79,16 +75,14 @@ ollama pull gemma4:12b
 ollama list
 ```
 
-### Step 4: Clone and Set Up Python Environment
+### Step 4: Clone and Install Python Dependencies
 
 ```bash
 git clone https://github.com/drthgz/pharmagenomics-advisor.git
 cd pharmagenomics-advisor
 
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-
-pip install -e ".[dev]"
+python3 -m pip install --upgrade pip
+python3 -m pip install -e ".[dev]"
 ```
 
 ### Step 5: Download Knowledge Base Data

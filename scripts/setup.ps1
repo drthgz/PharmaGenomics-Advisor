@@ -47,13 +47,11 @@ Write-Host "→ Pulling MedGemma model..." -ForegroundColor Yellow
 ollama pull medgemma
 Write-Host "  ✓ Model ready" -ForegroundColor Green
 
-# 5. Python environment
+# 5. Python dependencies (global interpreter)
 Write-Host ""
 Write-Host "→ Setting up Python environment..." -ForegroundColor Yellow
-python -m venv .venv
-& .\.venv\Scripts\Activate.ps1
-pip install --upgrade pip -q
-pip install -e ".[dev]" -q
+python -m pip install --upgrade pip -q
+python -m pip install -e ".[dev]" -q
 Write-Host "  ✓ Dependencies installed" -ForegroundColor Green
 
 # 6. Create directories
@@ -72,7 +70,7 @@ Write-Host ""
 Write-Host "╔══════════════════════════════════════════════════╗" -ForegroundColor Green
 Write-Host "║   ✓ Setup Complete!                              ║" -ForegroundColor Green
 Write-Host "║                                                  ║" -ForegroundColor Green
-Write-Host "║   Activate env:  .\.venv\Scripts\Activate.ps1    ║" -ForegroundColor Green
-Write-Host "║   Run tests:     pytest tests/ -v                ║" -ForegroundColor Green
+Write-Host "║   Python:        python                           ║" -ForegroundColor Green
+Write-Host "║   Run tests:     python -m pytest tests/ -v      ║" -ForegroundColor Green
 Write-Host "║   Run demo:      python scripts/demo.py          ║" -ForegroundColor Green
 Write-Host "╚══════════════════════════════════════════════════╝" -ForegroundColor Green

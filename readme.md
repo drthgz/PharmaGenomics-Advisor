@@ -31,21 +31,18 @@ Today, interpreting cancer genomic data takes 2-4 weeks and costs $2,000+ per ca
 
 ```bash
 # Clone
-git clone https://github.com/drthgz/aiAgent_intenstive_vibe.git
-cd aiAgent_intenstive_vibe
+git clone https://github.com/drthgz/pharmagenomics-advisor.git
+cd pharmagenomics-advisor
 
-# Setup (installs Ollama + pulls model + creates Python env)
+# Setup (installs Ollama + pulls model + installs Python deps)
 bash scripts/setup.sh          # Linux/macOS
 # powershell scripts/setup.ps1  # Windows
 
-# Activate environment
-source .venv/bin/activate
-
 # Run tests
-pytest tests/unit/ -v
+python3 -m pytest tests/unit/ -v
 
 # Run the demo
-python scripts/demo.py
+python3 scripts/demo.py
 ```
 
 ---
@@ -158,3 +155,4 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 Built for the Kaggle AI Agents Intensive Vibe Coding Capstone 2026 🧬
+`

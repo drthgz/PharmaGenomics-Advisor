@@ -45,13 +45,11 @@ echo "→ Pulling MedGemma model (this may take a few minutes)..."
 ollama pull medgemma
 echo "  ✓ Model ready"
 
-# 5. Create Python virtual environment
+# 5. Install Python dependencies (global interpreter)
 echo ""
 echo "→ Setting up Python environment..."
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip -q
-pip install -e ".[dev]" -q
+python3 -m pip install --upgrade pip -q
+python3 -m pip install -e ".[dev]" -q
 echo "  ✓ Dependencies installed"
 
 # 6. Download data
@@ -72,7 +70,7 @@ echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║   ✓ Setup Complete!                              ║"
 echo "║                                                  ║"
-echo "║   Activate env:  source .venv/bin/activate       ║"
-echo "║   Run tests:     pytest tests/ -v                ║"
-echo "║   Run demo:      python scripts/demo.py          ║"
+echo "║   Python:        python3                          ║"
+echo "║   Run tests:     python3 -m pytest tests/ -v     ║"
+echo "║   Run demo:      python3 scripts/demo.py         ║"
 echo "╚══════════════════════════════════════════════════╝"
