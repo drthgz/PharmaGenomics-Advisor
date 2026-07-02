@@ -153,6 +153,7 @@ pharmagenomics-advisor/
 | [04 - Implementation Guide](docs/04-implementation-guide.md) | Step-by-step build guide |
 | [05 - Deployment Guide](docs/05-deployment-guide.md) | Setup, Docker, Kaggle submission |
 | [06 - Debugging Guide](docs/06-debugging-troubleshooting.md) | Troubleshooting every common issue |
+| [07 - ADK FAQ](docs/07-adk-faq.md) | Demo-day guidance for ADK runtime, GUI, and API key questions |
 
 ---
 
