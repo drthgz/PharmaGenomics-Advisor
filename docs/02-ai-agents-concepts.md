@@ -181,23 +181,20 @@ ADK is Google's open-source framework for building AI agents. Version 2.0 (relea
 Instead of spaghetti if/else logic, you define agent execution as a directed graph:
 
 ```python
-from google.adk import Agent, Graph, Node, Edge
+from google.adk import Workflow
+from google.adk import workflow as wf
 
-# Define the pipeline as a graph
-graph = Graph()
-
-# Add nodes (each node is a processing step)
-graph.add_node("parse_vcf", parse_vcf_node)
-graph.add_node("classify_variants", classify_node)
-graph.add_node("drug_recommendations", pgx_node)
-graph.add_node("literature_evidence", rag_node)
-graph.add_node("generate_report", report_node)
-
-# Add edges (define execution flow)
-graph.add_edge("parse_vcf", "classify_variants")
-graph.add_edge("classify_variants", "drug_recommendations")
-graph.add_edge("drug_recommendations", "literature_evidence")
-graph.add_edge("literature_evidence", "generate_report")
+# Define the pipeline as a workflow graph
+pipeline = Workflow(
+    name="pharmagenomics_pipeline",
+    edges=[
+        (wf.START, parse_vcf_node),
+        (parse_vcf_node, classify_node),
+        (classify_node, pgx_node),
+        (pgx_node, rag_node),
+        (rag_node, report_node),
+    ],
+)
 ```
 
 #### Agent Definition

@@ -88,17 +88,14 @@ mkdir -p docs
 ### Step 4: Set Up Python Environment
 
 ```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
-
-pip install google-adk>=2.0.0
-pip install ollama
-pip install chromadb
-pip install sentence-transformers
-pip install httpx
-pip install pytest pytest-asyncio
-pip install pydantic
+python3 -m pip install --upgrade pip
+python3 -m pip install google-adk>=2.0.0
+python3 -m pip install ollama
+python3 -m pip install chromadb
+python3 -m pip install sentence-transformers
+python3 -m pip install httpx
+python3 -m pip install pytest pytest-asyncio
+python3 -m pip install pydantic
 ```
 
 ### Step 5: Verify Ollama Connection
@@ -582,24 +579,21 @@ def search_literature(query: str, top_k: int = 5, min_score: float = 0.5) -> lis
 
 ```python
 # src/pipeline/graph.py
-from google.adk import Graph, Agent
+from google.adk import Workflow
+from google.adk import workflow as wf
 from google.adk.tools import MCPToolset
 
-# Create the pipeline graph
-pipeline = Graph(name="pharmagenomics_pipeline")
-
-# Define nodes
-pipeline.add_node("input_validation", validate_and_parse_vcf)
-pipeline.add_node("variant_classification", classify_variants_parallel)
-pipeline.add_node("drug_recommendations", generate_drug_recs)
-pipeline.add_node("literature_evidence", retrieve_evidence)
-pipeline.add_node("report_generation", assemble_report)
-
-# Define edges (execution flow)
-pipeline.add_edge("input_validation", "variant_classification")
-pipeline.add_edge("variant_classification", "drug_recommendations")
-pipeline.add_edge("drug_recommendations", "literature_evidence")
-pipeline.add_edge("literature_evidence", "report_generation")
+# Create the pipeline workflow graph
+pipeline = Workflow(
+    name="pharmagenomics_pipeline",
+    edges=[
+        (wf.START, validate_and_parse_vcf),
+        (validate_and_parse_vcf, classify_variants_parallel),
+        (classify_variants_parallel, generate_drug_recs),
+        (generate_drug_recs, retrieve_evidence),
+        (retrieve_evidence, assemble_report),
+    ],
+)
 ```
 
 ### Supervisor Logic

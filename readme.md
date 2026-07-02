@@ -95,6 +95,14 @@ flowchart LR
 
 ---
 
+## Visual Assets
+
+![Pipeline Flowchart](docs/assets/pipeline-flowchart.svg)
+
+![DNA Concept Art (YouTube Thumbnail Candidate)](docs/assets/dna-concept-art.svg)
+
+---
+
 ## Demo Data
 
 - `data/samples/sample_variants.vcf`: baseline happy path (BRCA1, EGFR L858R, TP53)
@@ -154,6 +162,7 @@ pharmagenomics-advisor/
 | [05 - Deployment Guide](docs/05-deployment-guide.md) | Setup, Docker, Kaggle submission |
 | [06 - Debugging Guide](docs/06-debugging-troubleshooting.md) | Troubleshooting every common issue |
 | [07 - ADK FAQ](docs/07-adk-faq.md) | Demo-day guidance for ADK runtime, GUI, and API key questions |
+| [08 - Kaggle Writeup Draft](docs/08-kaggle-writeup-draft.md) | Ready-to-copy writeup draft for Kaggle submission page |
 
 ---
 

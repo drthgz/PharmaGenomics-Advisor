@@ -34,7 +34,6 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 markers = [
     "property: property-based tests (hypothesis)",
     "integration: integration tests requiring Ollama",

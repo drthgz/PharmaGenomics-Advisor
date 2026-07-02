@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-label="PharmaGenomics Advisor pipeline flowchart">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7fbff"/>
+      <stop offset="100%" stop-color="#eef7f1"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2d3e50"/>
+    </marker>
+    <style>
+      .title { font: 700 34px 'Segoe UI', sans-serif; fill: #1b2a3a; }
+      .subtitle { font: 500 17px 'Segoe UI', sans-serif; fill: #3f546a; }
+      .node { fill: #ffffff; stroke: #2d3e50; stroke-width: 2.2; rx: 14; }
+      .group { fill: #eef4fb; stroke: #8ca4bd; stroke-width: 1.8; rx: 18; }
+      .label { font: 600 17px 'Segoe UI', sans-serif; fill: #1b2a3a; text-anchor: middle; dominant-baseline: middle; }
+      .small { font: 500 14px 'Segoe UI', sans-serif; fill: #3f546a; text-anchor: middle; dominant-baseline: middle; }
+      .edge { stroke: #2d3e50; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .dashed { stroke-dasharray: 7 6; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="760" fill="url(#bg)"/>
+  <text x="700" y="58" class="title" text-anchor="middle">PharmaGenomics Advisor Pipeline</text>
+  <text x="700" y="87" class="subtitle" text-anchor="middle">Local-first multi-agent precision medicine workflow (Local + ADK runtime)</text>
+
+  <rect class="node" x="60" y="220" width="170" height="72"/>
+  <text class="label" x="145" y="256">VCF Input</text>
+
+  <rect class="node" x="280" y="220" width="170" height="72"/>
+  <text class="label" x="365" y="256">Parse + Route</text>
+
+  <rect class="group" x="500" y="130" width="390" height="260"/>
+  <text class="small" x="695" y="156">Parallel Specialist Stage</text>
+
+  <rect class="node" x="540" y="184" width="130" height="62"/>
+  <text class="small" x="605" y="215">BRCA Agent</text>
+
+  <rect class="node" x="680" y="184" width="130" height="62"/>
+  <text class="small" x="745" y="215">EGFR Agent</text>
+
+  <rect class="node" x="820" y="184" width="130" height="62"/>
+  <text class="small" x="885" y="215">TP53 Agent</text>
+
+  <rect class="node" x="620" y="288" width="150" height="62"/>
+  <text class="small" x="695" y="319">ClinVar Lookup</text>
+
+  <rect class="node" x="950" y="220" width="170" height="72"/>
+  <text class="label" x="1035" y="256">Drug Recs</text>
+
+  <rect class="node" x="1170" y="160" width="170" height="62"/>
+  <text class="small" x="1255" y="191">CPIC</text>
+
+  <rect class="node" x="1170" y="252" width="170" height="62"/>
+  <text class="small" x="1255" y="283">PharmGKB</text>
+
+  <rect class="node" x="1170" y="344" width="170" height="62"/>
+  <text class="small" x="1255" y="375">Literature RAG</text>
+
+  <rect class="node" x="950" y="470" width="220" height="80"/>
+  <text class="label" x="1060" y="506">Clinical Report</text>
+  <text class="small" x="1060" y="532">JSON + Markdown + Provenance</text>
+
+  <rect class="node" x="420" y="500" width="360" height="92"/>
+  <text class="label" x="600" y="536">Ollama (Local)</text>
+  <text class="small" x="600" y="562">MedGemma / Gemma | No API Keys</text>
+
+  <path class="edge" d="M230 256 L280 256"/>
+  <path class="edge" d="M450 256 L500 256"/>
+  <path class="edge" d="M605 246 L605 288"/>
+  <path class="edge" d="M745 246 L745 288"/>
+  <path class="edge" d="M885 246 L885 288"/>
+  <path class="edge" d="M770 319 L950 256"/>
+
+  <path class="edge" d="M1120 238 L1170 191"/>
+  <path class="edge" d="M1120 256 L1170 283"/>
+  <path class="edge" d="M1120 274 L1170 375"/>
+
+  <path class="edge" d="M1035 292 L1060 470"/>
+
+  <path class="edge dashed" d="M605 350 L600 500"/>
+  <path class="edge dashed" d="M1035 292 L730 500"/>
+  <path class="edge dashed" d="M1255 406 L700 500"/>
+</svg>

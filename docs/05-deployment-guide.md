@@ -102,10 +102,11 @@ python scripts/index_literature.py
 
 ```bash
 # Run the test suite
-pytest tests/ -v
+python3 -m pytest tests/ -v
 
 # Run a quick pipeline test
-python scripts/demo.py --quick
+python3 scripts/demo.py --runtime local
+python3 scripts/demo.py --runtime adk
 ```
 
 ---
@@ -409,11 +410,11 @@ python -c "import chromadb; c = chromadb.PersistentClient('data/literature/vecto
 
 ```bash
 # Wrong Python version
-python --version  # Must be 3.10+
+python3 --version  # Must be 3.10+
 
 # Missing dependencies
-pip install -e ".[dev]"
+python3 -m pip install -e ".[dev]"
 
-# Virtual environment not activated
-source .venv/bin/activate
+# ADK runtime missing
+python3 -m pip install "google-adk>=2.0.0"
 ```

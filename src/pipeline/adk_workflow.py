@@ -11,19 +11,30 @@ import time
 from pathlib import Path
 from typing import Any
 
+from google.genai import types
+
 from src.infrastructure.ollama_check import check_ollama_ready
 from src.models import (
-    ACMGClassification,
+    DrugRecommendation,
     ClinicalReport,
     ConfidenceLevel,
-    DrugRecommendation,
-    LiteratureResult,
+    RecommendationAction,
+    TherapeuticRelevance,
+    VariantClassification,
     ProvenanceMetadata,
     RouteStatus,
-    Variant,
-    VariantClassification,
 )
-from src.pipeline.orchestrator import ACTIONABLE_CLASSES, PipelineOrchestrator, render_markdown_report
+import src.pipeline.orchestrator as orchestrator_module
+from src.pipeline.orchestrator import (
+    ACTIONABLE_CLASSES,
+    PipelineOrchestrator,
+    _egfr_therapeutic_relevance,
+    _rule_based_acmg,
+    _to_action,
+    _tp53_functional_status,
+    _variant_description,
+    render_markdown_report,
+)
 
 
 class ADKNotAvailableError(RuntimeError):
@@ -31,7 +42,7 @@ class ADKNotAvailableError(RuntimeError):
 
 
 class ADKWorkflowRunner:
-    """Execute pipeline through a minimal ADK graph workflow."""
+    """Execute pipeline through a Google ADK workflow."""
 
     def __init__(self, check_ollama: bool = False):
         self._orchestrator = PipelineOrchestrator(check_ollama=check_ollama)
@@ -41,29 +52,31 @@ class ADKWorkflowRunner:
         """Run the pipeline using ADK workflow orchestration."""
         adk = self._import_adk()
         workflow = self._build_workflow(adk)
+        runner = self._build_runner(adk, workflow)
 
-        state: dict[str, Any] = {
+        user_message = types.UserContent(parts=[types.Part.from_text(text="run pipeline")])
+        state_delta = {
             "vcf_path": str(vcf_path),
             "session_id": session_id,
-            "warnings": [],
-            "classifications": [],
-            "recommendations": [],
-            "literature": [],
-            "provenance": [],
-            "parse_result": None,
-            "execution_seconds": 0.0,
+            "check_ollama": self._check_ollama,
         }
 
-        started = time.perf_counter()
+        final_output: Any = None
+        for event in runner.run(
+            user_id="local-user",
+            session_id=f"{session_id}-adk",
+            new_message=user_message,
+            state_delta=state_delta,
+        ):
+            if event.output is not None:
+                final_output = event.output
 
-        # Attempt ADK workflow execution first. If unavailable, execute node functions
-        # in the defined order while still validating ADK object creation.
-        executed_by_workflow = self._try_execute_workflow(workflow, state)
-        if not executed_by_workflow:
-            self._run_nodes_sequentially(state)
+        if isinstance(final_output, dict) and isinstance(final_output.get("report"), ClinicalReport):
+            return final_output["report"]
 
-        state["execution_seconds"] = time.perf_counter() - started
-        return self._assemble_report(state)
+        raise ADKNotAvailableError(
+            "ADK workflow run completed but did not return a ClinicalReport output"
+        )
 
     def _import_adk(self):
         try:
@@ -104,57 +117,60 @@ class ADKWorkflowRunner:
             edges=edges,
         )
 
-    def _try_execute_workflow(self, workflow, state: dict[str, Any]) -> bool:
-        run_method = getattr(workflow, "run", None)
-        if run_method is None:
-            return False
+    def _build_runner(self, adk_module, workflow):
+        Runner = getattr(adk_module, "Runner", None)
+        sessions_module = importlib.import_module("google.adk.sessions")
+        InMemorySessionService = getattr(sessions_module, "InMemorySessionService", None)
 
-        # ADK 2.3 Workflow.run requires a fully initialized Context/Runner stack.
-        # For local CLI reproducibility, we execute the same node graph deterministically
-        # while still constructing and validating the ADK Workflow object.
-        state["warnings"].append(
-            {
-                "stage": "adk_runtime",
-                "message": (
-                    "ADK Workflow object initialized. "
-                    "Direct Workflow.run requires ADK Context/Runner services; "
-                    "executed equivalent node chain deterministically."
-                ),
-            }
+        if Runner is None or InMemorySessionService is None:
+            raise ADKNotAvailableError("ADK Runner or InMemorySessionService not found")
+
+        return Runner(
+            app_name="pharmagenomics-advisor",
+            node=workflow,
+            session_service=InMemorySessionService(),
+            auto_create_session=True,
         )
-        return False
 
-    def _run_nodes_sequentially(self, state: dict[str, Any]) -> None:
-        self._node_validate_parse(state)
-        self._node_classify(state)
-        self._node_recommend(state)
-        self._node_literature(state)
-        self._node_assemble(state)
-
-    def _node_validate_parse(self, state: dict[str, Any]) -> dict[str, Any]:
-        if self._check_ollama:
+    def _node_validate_parse(
+        self,
+        vcf_path: str,
+        session_id: str,
+        check_ollama: bool = False,
+    ) -> dict[str, Any]:
+        warnings: list[dict] = []
+        if check_ollama:
             try:
                 check_ollama_ready()
             except Exception as exc:  # pragma: no cover - environment dependent
-                state["warnings"].append({"stage": "ollama_check", "message": str(exc)})
+                warnings.append({"stage": "ollama_check", "message": str(exc)})
 
-        vcf_path = Path(state["vcf_path"])
-        raw_text = vcf_path.read_text(encoding="utf-8")
-        validation = self._orchestrator.security.validate(raw_text, session_id=state["session_id"])
+        vcf_file = Path(vcf_path)
+        raw_text = vcf_file.read_text(encoding="utf-8")
+        validation = self._orchestrator.security.validate(raw_text, session_id=session_id)
         if not validation.is_valid:
             raise ValueError(
                 f"Security validation failed: {validation.error_message} "
                 f"({validation.rejected_reason})"
             )
 
-        state["parse_result"] = self._orchestrator.parser.parse(vcf_path)
-        return state
+        parse_result = self._orchestrator.parser.parse(vcf_file)
+        return {
+            "parse_result": parse_result,
+            "warnings": warnings,
+            "session_id": session_id,
+            "started_at": time.perf_counter(),
+        }
 
-    def _node_classify(self, state: dict[str, Any]) -> dict[str, Any]:
-        parse_result = state["parse_result"]
+    async def _node_classify(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        parse_result = node_input["parse_result"]
+        warnings = node_input.get("warnings", [])
+        classifications = []
+        provenance = []
+
         for variant in parse_result.variants:
             if variant.route_status == RouteStatus.UNROUTED or not variant.gene:
-                state["warnings"].append(
+                warnings.append(
                     {
                         "stage": "routing",
                         "variant": f"{variant.chromosome}:{variant.position}",
@@ -163,22 +179,72 @@ class ADKWorkflowRunner:
                 )
                 continue
 
-            classification = self._orchestrator._classify_variant(variant, state["warnings"])
-            state["classifications"].append(classification)
-            state["provenance"].append(
+            clinvar = await orchestrator_module.lookup_clinvar(variant)
+            data_sources = ["local_rules"]
+            limitations: list[str] = []
+            evidence: list[str] = []
+
+            if clinvar.get("status") == "success":
+                data_sources.append("clinvar")
+                for result in clinvar.get("results", [])[:2]:
+                    significance = result.get("clinical_significance", "unknown")
+                    review = result.get("review_status", "unknown")
+                    evidence.append(f"ClinVar: {significance} ({review})")
+            elif clinvar.get("status") == "disabled":
+                limitations.append("ClinVar online lookup disabled")
+            else:
+                limitations.append("ClinVar unavailable or no records found")
+                warnings.append(
+                    {
+                        "stage": "clinvar",
+                        "variant": f"{variant.chromosome}:{variant.position}",
+                        "message": clinvar.get("error", clinvar.get("status", "lookup failed")),
+                    }
+                )
+
+            classification_value, confidence = _rule_based_acmg(variant)
+            therapeutic_relevance = _egfr_therapeutic_relevance(variant)
+            functional_status = _tp53_functional_status(variant)
+
+            classification = VariantClassification(
+                gene=variant.gene,
+                variant_description=_variant_description(variant),
+                chromosome=variant.chromosome,
+                position=variant.position,
+                ref_allele=variant.ref_allele,
+                alt_allele=variant.alt_allele,
+                classification=classification_value,
+                confidence=confidence,
+                evidence_references=evidence or ["Rule-based assessment from local knowledge base"],
+                therapeutic_relevance=therapeutic_relevance,
+                functional_status=functional_status,
+                data_sources_queried=data_sources,
+                limitations=limitations,
+            )
+
+            classifications.append(classification)
+            provenance.append(
                 ProvenanceMetadata(
                     source_agent=f"{variant.gene.lower()}_agent",
                     data_sources_queried=classification.data_sources_queried,
                     confidence=classification.confidence,
                 )
             )
-        return state
 
-    def _node_recommend(self, state: dict[str, Any]) -> dict[str, Any]:
-        parse_result = state["parse_result"]
+        node_input["warnings"] = warnings
+        node_input["classifications"] = classifications
+        node_input["provenance"] = provenance
+        return node_input
+
+    async def _node_recommend(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        parse_result = node_input["parse_result"]
+        classifications = node_input.get("classifications", [])
+        warnings = node_input.get("warnings", [])
+        recommendations = []
+
         classified_by_key = {
             (c.chromosome, c.position, c.ref_allele, c.alt_allele): c
-            for c in state["classifications"]
+            for c in classifications
         }
 
         for variant in parse_result.variants:
@@ -189,37 +255,96 @@ class ADKWorkflowRunner:
             if classification.classification not in ACTIONABLE_CLASSES:
                 continue
 
-            recs = self._orchestrator._recommend_drugs(variant, classification, state["warnings"])
-            state["recommendations"].extend(recs)
+            variant_start_count = len(recommendations)
+            cpic_result = await orchestrator_module.lookup_cpic_guidelines(variant.gene or "")
+            pharmgkb_result = await orchestrator_module.lookup_pharmgkb_annotations(variant.gene or "")
 
-        return state
+            seen_keys: set[tuple[str, str]] = set()
 
-    def _node_literature(self, state: dict[str, Any]) -> dict[str, Any]:
-        if state["recommendations"]:
-            state["literature"] = self._orchestrator.literature.retrieve(state["recommendations"])
-            state["provenance"].append(
+            if cpic_result.get("status") == "success":
+                for row in cpic_result.get("results", []):
+                    row_key = (row.get("gene", ""), row.get("drug", ""))
+                    if row_key in seen_keys:
+                        continue
+                    seen_keys.add(row_key)
+                    recommendations.append(
+                        DrugRecommendation(
+                            drug_name=row.get("drug", "unknown"),
+                            gene=row.get("gene", variant.gene or "unknown"),
+                            variant=variant.hgvs or _variant_description(variant),
+                            action=_to_action(row.get("recommendation", "alternative therapy")),
+                            evidence_level=str(row.get("cpic_level", "B")),
+                            guideline_source_url=row.get("url", ""),
+                            contraindications=row.get("contraindications", []),
+                        )
+                    )
+
+            if (
+                variant.gene == "EGFR"
+                and classification.therapeutic_relevance == TherapeuticRelevance.TKI_SENSITIVE
+                and pharmgkb_result.get("status") == "success"
+            ):
+                for row in pharmgkb_result.get("results", []):
+                    row_key = (row.get("gene", ""), row.get("drug", ""))
+                    if row_key in seen_keys:
+                        continue
+                    seen_keys.add(row_key)
+                    recommendations.append(
+                        DrugRecommendation(
+                            drug_name=row.get("drug", "unknown"),
+                            gene=row.get("gene", variant.gene),
+                            variant=row.get("variant", variant.hgvs or "unknown"),
+                            action=RecommendationAction.RECOMMENDED,
+                            evidence_level=str(row.get("evidence_level", "B")),
+                            guideline_source_url="https://www.pharmgkb.org/",
+                            contraindications=[],
+                        )
+                    )
+
+            if len(recommendations) == variant_start_count:
+                warnings.append(
+                    {
+                        "stage": "pgx",
+                        "variant": f"{variant.chromosome}:{variant.position}",
+                        "message": "No established pharmacogenomic guideline found",
+                    }
+                )
+
+        node_input["warnings"] = warnings
+        node_input["recommendations"] = recommendations
+        return node_input
+
+    def _node_literature(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        recommendations = node_input.get("recommendations", [])
+        provenance = node_input.get("provenance", [])
+
+        if recommendations:
+            literature = self._orchestrator.literature.retrieve(recommendations)
+            provenance.append(
                 ProvenanceMetadata(
                     source_agent="literature_rag",
                     data_sources_queried=["local_literature_corpus"],
                     confidence=ConfidenceLevel.MODERATE,
                 )
             )
-        return state
+        else:
+            literature = []
 
-    def _node_assemble(self, state: dict[str, Any]) -> dict[str, Any]:
-        # State is assembled into final report by _assemble_report.
-        return state
+        node_input["literature"] = literature
+        node_input["provenance"] = provenance
+        return node_input
 
-    def _assemble_report(self, state: dict[str, Any]) -> ClinicalReport:
-        parse_result = state["parse_result"]
+    def _node_assemble(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        parse_result = node_input["parse_result"]
+        started_at = node_input.get("started_at", time.perf_counter())
         report = ClinicalReport(
-            total_execution_time_seconds=state["execution_seconds"],
+            total_execution_time_seconds=time.perf_counter() - started_at,
             variant_summary=parse_result.variants,
-            classifications=state["classifications"],
-            drug_recommendations=state["recommendations"],
-            literature_evidence=state["literature"],
-            provenance=state["provenance"],
-            warnings=state["warnings"],
+            classifications=node_input.get("classifications", []),
+            drug_recommendations=node_input.get("recommendations", []),
+            literature_evidence=node_input.get("literature", []),
+            provenance=node_input.get("provenance", []),
+            warnings=node_input.get("warnings", []),
         )
         report.markdown_summary = render_markdown_report(report)
-        return report
+        return {"report": report}
