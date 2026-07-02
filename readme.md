@@ -44,6 +44,9 @@ python3 -m pytest tests/unit tests/integration -v
 # Run the demo
 python3 scripts/demo.py
 
+# Run the same flow via ADK runtime (requires google-adk installed)
+python3 scripts/demo.py --runtime adk
+
 # Optional: run storytelling demo with resistant EGFR + unrouted gene
 python3 scripts/demo.py --vcf data/samples/sample_variants_storytelling.vcf
 ```

@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.pipeline.orchestrator import PipelineOrchestrator
+from src.pipeline import ADKNotAvailableError, ADKWorkflowRunner, PipelineOrchestrator
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,14 +37,28 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verify Ollama and model availability before running",
     )
+    parser.add_argument(
+        "--runtime",
+        default="local",
+        choices=["local", "adk"],
+        help="Execution runtime: local orchestrator or ADK workflow",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
 
-    orchestrator = PipelineOrchestrator(check_ollama=args.check_ollama)
-    report = orchestrator.run(vcf_path=args.vcf, session_id=args.session_id)
+    try:
+        if args.runtime == "adk":
+            runner = ADKWorkflowRunner(check_ollama=args.check_ollama)
+            report = runner.run(vcf_path=args.vcf, session_id=args.session_id)
+        else:
+            orchestrator = PipelineOrchestrator(check_ollama=args.check_ollama)
+            report = orchestrator.run(vcf_path=args.vcf, session_id=args.session_id)
+    except ADKNotAvailableError as exc:
+        print(f"ADK runtime unavailable: {exc}")
+        return 2
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -59,6 +73,7 @@ def main() -> int:
     md_path.write_text(report.markdown_summary, encoding="utf-8")
 
     print("PharmaGenomics Advisor demo completed")
+    print(f"Runtime: {args.runtime}")
     print(f"Input VCF: {args.vcf}")
     print(f"Variants analyzed: {len(report.variant_summary)}")
     print(f"Classifications: {len(report.classifications)}")
