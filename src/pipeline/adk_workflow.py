@@ -40,7 +40,7 @@ class ADKWorkflowRunner:
         """Run the pipeline using ADK workflow orchestration."""
         try:
             genai_types = importlib.import_module("google.genai.types")
-        except ImportError as exc:  # pragma: no cover - environment-dependent
+        except ImportError as exc:  # pragma: no cover - environment-specific
             raise ADKNotAvailableError(
                 "google-genai runtime is unavailable. Install with: "
                 "python3 -m pip install 'google-adk>=2.0.0'"

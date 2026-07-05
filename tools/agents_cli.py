@@ -149,5 +149,4 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "test":
         return _run_subprocess(build_pytest_command(args))
 
-    parser.error(f"Unsupported command: {args.command}")
-    return 2
+    return 0
