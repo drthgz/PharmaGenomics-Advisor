@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 
-from src.exceptions import SecurityValidationError
 from src.models import ValidationResult
 
 # ─── Injection Pattern Definitions ───────────────────────────────────────────

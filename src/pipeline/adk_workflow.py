@@ -11,28 +11,16 @@ import time
 from pathlib import Path
 from typing import Any
 
-from google.genai import types
-
 from src.infrastructure.ollama_check import check_ollama_ready
 from src.models import (
-    DrugRecommendation,
     ClinicalReport,
-    ConfidenceLevel,
-    RecommendationAction,
-    TherapeuticRelevance,
-    VariantClassification,
     ProvenanceMetadata,
     RouteStatus,
 )
-import src.pipeline.orchestrator as orchestrator_module
 from src.pipeline.orchestrator import (
     ACTIONABLE_CLASSES,
     PipelineOrchestrator,
-    _egfr_therapeutic_relevance,
-    _rule_based_acmg,
-    _to_action,
-    _tp53_functional_status,
-    _variant_description,
+    _agent_name_for_gene,
     render_markdown_report,
 )
 
@@ -50,11 +38,18 @@ class ADKWorkflowRunner:
 
     def run(self, vcf_path: str | Path, session_id: str = "demo") -> ClinicalReport:
         """Run the pipeline using ADK workflow orchestration."""
+        try:
+            genai_types = importlib.import_module("google.genai.types")
+        except ImportError as exc:  # pragma: no cover - environment-specific
+            raise ADKNotAvailableError(
+                "google-genai runtime is unavailable. Install with: "
+                "python3 -m pip install 'google-adk>=2.0.0'"
+            ) from exc
         adk = self._import_adk()
         workflow = self._build_workflow(adk)
         runner = self._build_runner(adk, workflow)
 
-        user_message = types.UserContent(parts=[types.Part.from_text(text="run pipeline")])
+        user_message = genai_types.UserContent(parts=[genai_types.Part.from_text(text="run pipeline")])
         state_delta = {
             "vcf_path": str(vcf_path),
             "session_id": session_id,
@@ -179,53 +174,11 @@ class ADKWorkflowRunner:
                 )
                 continue
 
-            clinvar = await orchestrator_module.lookup_clinvar(variant)
-            data_sources = ["local_rules"]
-            limitations: list[str] = []
-            evidence: list[str] = []
-
-            if clinvar.get("status") == "success":
-                data_sources.append("clinvar")
-                for result in clinvar.get("results", [])[:2]:
-                    significance = result.get("clinical_significance", "unknown")
-                    review = result.get("review_status", "unknown")
-                    evidence.append(f"ClinVar: {significance} ({review})")
-            elif clinvar.get("status") == "disabled":
-                limitations.append("ClinVar online lookup disabled")
-            else:
-                limitations.append("ClinVar unavailable or no records found")
-                warnings.append(
-                    {
-                        "stage": "clinvar",
-                        "variant": f"{variant.chromosome}:{variant.position}",
-                        "message": clinvar.get("error", clinvar.get("status", "lookup failed")),
-                    }
-                )
-
-            classification_value, confidence = _rule_based_acmg(variant)
-            therapeutic_relevance = _egfr_therapeutic_relevance(variant)
-            functional_status = _tp53_functional_status(variant)
-
-            classification = VariantClassification(
-                gene=variant.gene,
-                variant_description=_variant_description(variant),
-                chromosome=variant.chromosome,
-                position=variant.position,
-                ref_allele=variant.ref_allele,
-                alt_allele=variant.alt_allele,
-                classification=classification_value,
-                confidence=confidence,
-                evidence_references=evidence or ["Rule-based assessment from local knowledge base"],
-                therapeutic_relevance=therapeutic_relevance,
-                functional_status=functional_status,
-                data_sources_queried=data_sources,
-                limitations=limitations,
-            )
-
+            classification = await self._orchestrator._classify_variant_async(variant, warnings)
             classifications.append(classification)
             provenance.append(
                 ProvenanceMetadata(
-                    source_agent=f"{variant.gene.lower()}_agent",
+                    source_agent=_agent_name_for_gene(variant.gene),
                     data_sources_queried=classification.data_sources_queried,
                     confidence=classification.confidence,
                 )
@@ -255,60 +208,9 @@ class ADKWorkflowRunner:
             if classification.classification not in ACTIONABLE_CLASSES:
                 continue
 
-            variant_start_count = len(recommendations)
-            cpic_result = await orchestrator_module.lookup_cpic_guidelines(variant.gene or "")
-            pharmgkb_result = await orchestrator_module.lookup_pharmgkb_annotations(variant.gene or "")
-
-            seen_keys: set[tuple[str, str]] = set()
-
-            if cpic_result.get("status") == "success":
-                for row in cpic_result.get("results", []):
-                    row_key = (row.get("gene", ""), row.get("drug", ""))
-                    if row_key in seen_keys:
-                        continue
-                    seen_keys.add(row_key)
-                    recommendations.append(
-                        DrugRecommendation(
-                            drug_name=row.get("drug", "unknown"),
-                            gene=row.get("gene", variant.gene or "unknown"),
-                            variant=variant.hgvs or _variant_description(variant),
-                            action=_to_action(row.get("recommendation", "alternative therapy")),
-                            evidence_level=str(row.get("cpic_level", "B")),
-                            guideline_source_url=row.get("url", ""),
-                            contraindications=row.get("contraindications", []),
-                        )
-                    )
-
-            if (
-                variant.gene == "EGFR"
-                and classification.therapeutic_relevance == TherapeuticRelevance.TKI_SENSITIVE
-                and pharmgkb_result.get("status") == "success"
-            ):
-                for row in pharmgkb_result.get("results", []):
-                    row_key = (row.get("gene", ""), row.get("drug", ""))
-                    if row_key in seen_keys:
-                        continue
-                    seen_keys.add(row_key)
-                    recommendations.append(
-                        DrugRecommendation(
-                            drug_name=row.get("drug", "unknown"),
-                            gene=row.get("gene", variant.gene),
-                            variant=row.get("variant", variant.hgvs or "unknown"),
-                            action=RecommendationAction.RECOMMENDED,
-                            evidence_level=str(row.get("evidence_level", "B")),
-                            guideline_source_url="https://www.pharmgkb.org/",
-                            contraindications=[],
-                        )
-                    )
-
-            if len(recommendations) == variant_start_count:
-                warnings.append(
-                    {
-                        "stage": "pgx",
-                        "variant": f"{variant.chromosome}:{variant.position}",
-                        "message": "No established pharmacogenomic guideline found",
-                    }
-                )
+            recommendations.extend(
+                await self._orchestrator._recommend_drugs_async(variant, classification, warnings)
+            )
 
         node_input["warnings"] = warnings
         node_input["recommendations"] = recommendations
@@ -319,14 +221,8 @@ class ADKWorkflowRunner:
         provenance = node_input.get("provenance", [])
 
         if recommendations:
-            literature = self._orchestrator.literature.retrieve(recommendations)
-            provenance.append(
-                ProvenanceMetadata(
-                    source_agent="literature_rag",
-                    data_sources_queried=["local_literature_corpus"],
-                    confidence=ConfidenceLevel.MODERATE,
-                )
-            )
+            literature, literature_provenance = self._orchestrator._retrieve_literature(recommendations)
+            provenance.append(literature_provenance)
         else:
             literature = []
 
@@ -347,4 +243,10 @@ class ADKWorkflowRunner:
             warnings=node_input.get("warnings", []),
         )
         report.markdown_summary = render_markdown_report(report)
+        self._orchestrator.security.audit(
+            "supervisor",
+            "assemble_report",
+            {"workflow": "adk", "started_at": started_at},
+            report,
+        )
         return {"report": report}

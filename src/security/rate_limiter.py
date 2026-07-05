@@ -9,7 +9,6 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 
-from src.exceptions import RateLimitExceededError
 from src.models import ValidationResult
 
 
