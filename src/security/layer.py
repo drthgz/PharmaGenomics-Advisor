@@ -7,6 +7,7 @@ Applied to all inputs before they reach any agent or MCP server.
 from __future__ import annotations
 
 import os
+import json
 from typing import Any
 
 from pydantic import BaseModel
@@ -109,10 +110,18 @@ class SecurityLayer:
     @staticmethod
     def _serialize_payload(payload: Any) -> str:
         """Serialize structured payloads before hashing them."""
+        return json.dumps(SecurityLayer._normalize_payload(payload), sort_keys=True, default=str)
+
+    @staticmethod
+    def _normalize_payload(payload: Any) -> Any:
+        """Convert structured payloads into JSON-serializable data."""
         if isinstance(payload, BaseModel):
-            return payload.model_dump_json()
+            return payload.model_dump(mode="json")
         if isinstance(payload, list):
-            return "[" + ",".join(SecurityLayer._serialize_payload(item) for item in payload) + "]"
+            return [SecurityLayer._normalize_payload(item) for item in payload]
         if isinstance(payload, dict):
-            return repr(dict(sorted(payload.items())))
-        return str(payload)
+            return {
+                str(key): SecurityLayer._normalize_payload(value)
+                for key, value in sorted(payload.items(), key=lambda item: str(item[0]))
+            }
+        return payload

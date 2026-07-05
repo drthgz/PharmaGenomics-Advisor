@@ -39,7 +39,7 @@ class ADKWorkflowRunner:
     def run(self, vcf_path: str | Path, session_id: str = "demo") -> ClinicalReport:
         """Run the pipeline using ADK workflow orchestration."""
         try:
-            types = importlib.import_module("google.genai.types")
+            genai_types = importlib.import_module("google.genai.types")
         except ImportError as exc:  # pragma: no cover - environment-dependent
             raise ADKNotAvailableError(
                 "google-genai runtime is unavailable. Install with: "
@@ -49,7 +49,7 @@ class ADKWorkflowRunner:
         workflow = self._build_workflow(adk)
         runner = self._build_runner(adk, workflow)
 
-        user_message = types.UserContent(parts=[types.Part.from_text(text="run pipeline")])
+        user_message = genai_types.UserContent(parts=[genai_types.Part.from_text(text="run pipeline")])
         state_delta = {
             "vcf_path": str(vcf_path),
             "session_id": session_id,
