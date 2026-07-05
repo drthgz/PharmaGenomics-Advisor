@@ -14,9 +14,9 @@ from typing import Any
 from src.infrastructure.ollama_check import check_ollama_ready
 from src.models import (
     ClinicalReport,
+    ProvenanceMetadata,
     RouteStatus,
 )
-import src.pipeline.orchestrator as orchestrator_module
 from src.pipeline.orchestrator import (
     ACTIONABLE_CLASSES,
     PipelineOrchestrator,
@@ -40,7 +40,7 @@ class ADKWorkflowRunner:
         """Run the pipeline using ADK workflow orchestration."""
         try:
             types = importlib.import_module("google.genai.types")
-        except Exception as exc:  # pragma: no cover - environment-dependent
+        except ImportError as exc:  # pragma: no cover - environment-dependent
             raise ADKNotAvailableError(
                 "google-genai runtime is unavailable. Install with: "
                 "python3 -m pip install 'google-adk>=2.0.0'"
@@ -177,7 +177,7 @@ class ADKWorkflowRunner:
             classification = await self._orchestrator._classify_variant_async(variant, warnings)
             classifications.append(classification)
             provenance.append(
-                orchestrator_module.ProvenanceMetadata(
+                ProvenanceMetadata(
                     source_agent=_agent_name_for_gene(variant.gene),
                     data_sources_queried=classification.data_sources_queried,
                     confidence=classification.confidence,
