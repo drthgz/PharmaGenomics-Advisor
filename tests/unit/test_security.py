@@ -1,7 +1,5 @@
 """Unit tests for security layer."""
 
-import pytest
-
 from src.security.input_validator import InputValidator
 from src.security.phi_detector import PHIDetector
 from src.security.rate_limiter import RateLimiter

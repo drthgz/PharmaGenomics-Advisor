@@ -41,6 +41,11 @@ bash scripts/setup.sh          # Linux/macOS
 # Run tests
 python3 -m pytest tests/unit tests/integration -v
 
+# Agents CLI style helpers
+python3 -m tools.agents_cli test --coverage
+python3 -m tools.agents_cli run --runtime adk
+python3 -m tools.agents_cli create demo_agent --description "New agent scaffold"
+
 # Run the demo
 python3 scripts/demo.py
 
@@ -146,6 +151,7 @@ pharmagenomics-advisor/
 ├── tests/                   # Unit + property + integration tests
 ├── notebooks/               # Jupyter notebooks for interactive dev
 ├── docs/                    # Comprehensive documentation
+├── tools/                   # Agents CLI style helper commands
 └── scripts/                 # Setup and demo scripts
 ```
 

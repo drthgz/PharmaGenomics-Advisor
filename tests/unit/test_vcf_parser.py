@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.exceptions import VCFEmptyError, VCFFormatError, VCFTooLargeError
-from src.models import RouteStatus, VariantType
+from src.exceptions import VCFEmptyError, VCFFormatError
+from src.models import RouteStatus
 from src.parsers.vcf_parser import VCFParser, format_variant_to_vcf, parse_vcf_line
 
 

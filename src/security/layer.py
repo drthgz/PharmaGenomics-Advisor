@@ -7,6 +7,9 @@ Applied to all inputs before they reach any agent or MCP server.
 from __future__ import annotations
 
 import os
+from typing import Any
+
+from pydantic import BaseModel
 
 from src.models import SecurityConfig, ValidationResult
 from src.security.audit_logger import AuditLogger
@@ -87,3 +90,29 @@ class SecurityLayer:
             return result
 
         return ValidationResult(is_valid=True)
+
+    def audit(
+        self,
+        agent_name: str,
+        action_type: str,
+        input_data: Any,
+        output_data: Any,
+    ):
+        """Persist hashed audit metadata for an agent invocation."""
+        return self.audit_logger.log(
+            agent_name=agent_name,
+            action_type=action_type,
+            input_data=self._serialize_payload(input_data),
+            output_data=self._serialize_payload(output_data),
+        )
+
+    @staticmethod
+    def _serialize_payload(payload: Any) -> str:
+        """Serialize structured payloads before hashing them."""
+        if isinstance(payload, BaseModel):
+            return payload.model_dump_json()
+        if isinstance(payload, list):
+            return "[" + ",".join(SecurityLayer._serialize_payload(item) for item in payload) + "]"
+        if isinstance(payload, dict):
+            return repr(dict(sorted(payload.items())))
+        return str(payload)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
+from typing import Any
 
 from src.infrastructure.ollama_check import check_ollama_ready
 from src.mcp_servers_bridge import (
@@ -71,6 +72,7 @@ class PipelineOrchestrator:
             )
 
         parse_result = self.parser.parse(vcf_path)
+        self._audit("supervisor", "parse_vcf", {"vcf_path": str(vcf_path)}, parse_result)
 
         classifications: list[VariantClassification] = []
         recommendations: list[DrugRecommendation] = []
@@ -92,7 +94,7 @@ class PipelineOrchestrator:
             classifications.append(classification)
             provenance.append(
                 ProvenanceMetadata(
-                    source_agent=f"{variant.gene.lower()}_agent",
+                    source_agent=_agent_name_for_gene(variant.gene),
                     data_sources_queried=classification.data_sources_queried,
                     confidence=classification.confidence,
                 )
@@ -103,14 +105,8 @@ class PipelineOrchestrator:
                 recommendations.extend(variant_recs)
 
         if recommendations:
-            literature = self.literature.retrieve(recommendations)
-            provenance.append(
-                ProvenanceMetadata(
-                    source_agent="literature_rag",
-                    data_sources_queried=["local_literature_corpus"],
-                    confidence=ConfidenceLevel.MODERATE,
-                )
-            )
+            literature, literature_provenance = self._retrieve_literature(recommendations)
+            provenance.append(literature_provenance)
 
         elapsed = time.perf_counter() - started
         report = ClinicalReport(
@@ -123,10 +119,18 @@ class PipelineOrchestrator:
             warnings=warnings,
         )
         report.markdown_summary = render_markdown_report(report)
+        self._audit("supervisor", "assemble_report", {"session_id": session_id}, report)
         return report
 
     def _classify_variant(self, variant: Variant, warnings: list[dict]) -> VariantClassification:
-        clinvar = asyncio.run(lookup_clinvar(variant))
+        return asyncio.run(self._classify_variant_async(variant, warnings))
+
+    async def _classify_variant_async(
+        self,
+        variant: Variant,
+        warnings: list[dict],
+    ) -> VariantClassification:
+        clinvar = await lookup_clinvar(variant)
         data_sources = ["local_rules"]
         limitations: list[str] = []
         evidence: list[str] = []
@@ -153,7 +157,7 @@ class PipelineOrchestrator:
         therapeutic_relevance = _egfr_therapeutic_relevance(variant)
         functional_status = _tp53_functional_status(variant)
 
-        return VariantClassification(
+        classification = VariantClassification(
             gene=variant.gene,
             variant_description=_variant_description(variant),
             chromosome=variant.chromosome,
@@ -168,6 +172,8 @@ class PipelineOrchestrator:
             data_sources_queried=data_sources,
             limitations=limitations,
         )
+        self._audit(_agent_name_for_gene(variant.gene), "classify_variant", variant, classification)
+        return classification
 
     def _recommend_drugs(
         self,
@@ -175,8 +181,16 @@ class PipelineOrchestrator:
         classification: VariantClassification,
         warnings: list[dict],
     ) -> list[DrugRecommendation]:
-        cpic_result = asyncio.run(lookup_cpic_guidelines(variant.gene or ""))
-        pharmgkb_result = asyncio.run(lookup_pharmgkb_annotations(variant.gene or ""))
+        return asyncio.run(self._recommend_drugs_async(variant, classification, warnings))
+
+    async def _recommend_drugs_async(
+        self,
+        variant: Variant,
+        classification: VariantClassification,
+        warnings: list[dict],
+    ) -> list[DrugRecommendation]:
+        cpic_result = await lookup_cpic_guidelines(variant.gene or "")
+        pharmgkb_result = await lookup_pharmgkb_annotations(variant.gene or "")
 
         recommendations: list[DrugRecommendation] = []
         seen_keys: set[tuple[str, str]] = set()
@@ -230,12 +244,47 @@ class PipelineOrchestrator:
                 }
             )
 
+        self._audit(
+            "pgx_advisor",
+            "recommend_drugs",
+            {
+                "variant": variant,
+                "classification": classification,
+            },
+            recommendations,
+        )
         return recommendations
+
+    def _retrieve_literature(
+        self,
+        recommendations: list[DrugRecommendation],
+    ) -> tuple[list[LiteratureResult], ProvenanceMetadata]:
+        literature = self.literature.retrieve(recommendations)
+        provenance = ProvenanceMetadata(
+            source_agent="literature_rag",
+            data_sources_queried=["local_literature_corpus"],
+            confidence=ConfidenceLevel.MODERATE,
+        )
+        self._audit("literature_rag", "retrieve_evidence", recommendations, literature)
+        return literature, provenance
+
+    def _audit(self, agent_name: str, action_type: str, input_data: Any, output_data: Any) -> None:
+        self.security.audit(agent_name, action_type, input_data, output_data)
 
 
 def _variant_description(variant: Variant) -> str:
     hgvs = f" ({variant.hgvs})" if variant.hgvs else ""
     return f"{variant.gene} {variant.chromosome}:{variant.position} {variant.ref_allele}>{variant.alt_allele}{hgvs}"
+
+
+def _agent_name_for_gene(gene: str | None) -> str:
+    mapping = {
+        "BRCA1": "brca_agent",
+        "BRCA2": "brca_agent",
+        "EGFR": "egfr_agent",
+        "TP53": "tp53_agent",
+    }
+    return mapping.get((gene or "").upper(), "unknown_agent")
 
 
 def _rule_based_acmg(variant: Variant) -> tuple[ACMGClassification, ConfidenceLevel]:
