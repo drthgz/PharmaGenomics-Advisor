@@ -58,7 +58,7 @@
 
   <rect class="node" x="950" y="470" width="220" height="80"/>
   <text class="label" x="1060" y="506">Clinical Report</text>
-  <text class="small" x="1060" y="532">JSON + Markdown + Provenance</text>
+  <text class="small" x="1060" y="532">JSON + Markdown + HTML + Provenance</text>
 
   <rect class="node" x="420" y="500" width="360" height="92"/>
   <text class="label" x="600" y="536">Ollama (Local)</text>

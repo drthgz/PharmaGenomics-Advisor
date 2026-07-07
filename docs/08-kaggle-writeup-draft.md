@@ -35,7 +35,7 @@ Output:
 - ACMG-style classifications
 - Drug recommendations with evidence levels
 - Literature citation bundles and synthesis
-- Unified JSON and Markdown report with warnings/provenance
+- Unified JSON, Markdown, and official-style HTML reports with warnings/provenance
 
 Execution model:
 
@@ -94,6 +94,11 @@ The project is designed to run without mandatory cloud credentials. This keeps c
 ### 6.3 Robust failure handling
 
 The pipeline returns useful reports even when some sources are unavailable, and records warnings for degraded paths.
+Warnings are rendered in audience-friendly language with:
+
+- message
+- impact
+- recommended action
 
 ### 6.4 Storytelling scenario
 
@@ -118,13 +123,21 @@ Artifacts to show:
 
 - `output/.../report.json`
 - `output/.../report.md`
+- `output/.../report.html`
 
 What to highlight in the video:
 
 - Variant counts and routed/unrouted behavior
 - Recommendation generation from MCP-backed evidence
-- Warning/provenance transparency
+- Warning/provenance transparency with actionable guidance
 - Runtime switch (`local` vs `adk`) proving integration depth
+
+Recommended media (generated in `docs/assets/`):
+
+- `kaggle-cover.png`
+- `pipeline-architecture.png`
+- `report-preview.png`
+- `youtube-thumbnail.png`
 
 ## 8. Results
 
@@ -132,7 +145,7 @@ Current validation:
 
 - Full test suite passes
 - Both local and ADK runtime paths execute end-to-end
-- Outputs are generated as structured JSON + readable Markdown
+- Outputs are generated as structured JSON + readable Markdown + stakeholder HTML
 
 This demonstrates operational correctness and reproducibility in a capstone context.
 
@@ -173,6 +186,7 @@ PharmaGenomics Advisor targets a healthcare interpretation bottleneck where spee
 bash scripts/setup.sh
 python3 -m pytest tests -v
 python3 scripts/demo.py --runtime adk --vcf data/samples/sample_variants_storytelling.vcf
+python3 scripts/generate_media_assets.py
 ```
 
 If you are reviewing this from GitHub, all setup and demo instructions are documented in `README.md` and `docs/05-deployment-guide.md`.

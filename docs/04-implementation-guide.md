@@ -703,7 +703,7 @@ class ClinicalReport:
     
     # Metadata
     provenance: list[dict]  # Per-finding source tracking
-    warnings: list[dict]    # Degraded results, timeouts, etc.
+    warnings: list[dict]    # Degraded results with impact + recommended_action
     
     def to_json(self) -> str:
         """Serialize to JSON (must be round-trip safe)."""
@@ -765,6 +765,7 @@ async def main():
     print(f"\nExecution time: {report.total_execution_time_seconds:.1f}s")
     print(f"\nReport saved to: output/report.json")
     print(f"Summary saved to: output/report.md")
+    print(f"Stakeholder report saved to: output/report.html")
 
 if __name__ == "__main__":
     asyncio.run(main())

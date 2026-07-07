@@ -61,7 +61,7 @@
 │       ▼                         REPORT ASSEMBLY                      │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │                    Clinical Report Generator                   │   │
-│  │              (JSON + Markdown with provenance)                 │   │
+│  │       (JSON + Markdown + HTML with provenance + warnings)      │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────┬────────────────────────────────────┘
                                  │
@@ -187,6 +187,7 @@ ELSE:
 **Outputs:**
 - `report.json` — Machine-readable, structured data
 - `report.md` — Human-readable markdown for clinical review
+- `report.html` — Official-style HTML report for stakeholders and demo audiences
 
 ---
 
@@ -227,7 +228,8 @@ ELSE:
 7. Report Generator:
    → Assembles all results
    → Adds provenance metadata
-   → Writes JSON + Markdown files
+  → Writes JSON + Markdown + HTML files
+  → Formats warnings as impact + recommended action
    → Logs to audit trail
 ```
 
@@ -268,7 +270,7 @@ Gene agent timeout (>60s):
 | MCP Servers | Python (FastMCP) | Lightweight, easy to implement |
 | Vector Store | ChromaDB or FAISS | Local, no server needed, fast |
 | Embeddings | all-MiniLM-L6-v2 | Small, fast, good quality (384 dims) |
-| Data Format | VCF 4.x input, JSON/MD output | Clinical standards |
+| Data Format | VCF 4.x input, JSON/MD/HTML output | Clinical standards |
 | Testing | pytest + Agents CLI | Unit + integration + agent evaluation |
 | Deployment | Docker / Cloud Run | Containerized, reproducible |
 

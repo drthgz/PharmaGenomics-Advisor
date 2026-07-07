@@ -213,6 +213,7 @@ python3 scripts/demo.py --vcf data/samples/sample_variants_storytelling.vcf
 # Show the output report
 echo "3. Clinical Report:"
 cat output/report.md
+echo "4. Official HTML Report: output/report.html"
 ```
 
 ### Sample VCF for Demo
@@ -255,8 +256,9 @@ Drug Recommendations:
 Classification: Pathogenic (High confidence)
 Functional Status: Gain-of-function
 Drug Recommendations:
-  • No established pharmacogenomic guideline
-  • Suggested: Clinical trial eligibility search
+  • No established pharmacogenomic guideline found for this variant
+  • Impact: No gene-drug recommendation was generated
+  • Recommended action: review NCCN/ESMO guidance + trial eligibility + tumor board
 
 --- LITERATURE EVIDENCE ---
 5 papers retrieved (relevance scores: 0.89, 0.85, 0.82, 0.78, 0.71)
@@ -264,7 +266,9 @@ Synthesis: Evidence strongly supports osimertinib as first-line therapy
 for EGFR L858R mutations in NSCLC, with response rates of 70-80%...
 
 --- WARNINGS ---
-None. All services responded normally.
+pgx/TP53: No established pharmacogenomic guideline found for this variant
+Impact: No gene-drug recommendation was generated
+Recommended action: review NCCN/ESMO guidance + trial eligibility + tumor board
 ```
 
 ---

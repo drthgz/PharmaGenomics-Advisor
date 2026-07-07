@@ -341,8 +341,14 @@ class PipelineOrchestrator:
             warnings.append(
                 {
                     "stage": "pgx",
+                    "gene": variant.gene or "unknown",
                     "variant": f"{variant.chromosome}:{variant.position}",
-                    "message": "No established pharmacogenomic guideline found",
+                    "message": "No established pharmacogenomic guideline found for this variant",
+                    "impact": "No gene-drug recommendation was generated",
+                    "recommended_action": (
+                        "Consider manual review of NCCN/ESMO guidance, clinical-trial eligibility, "
+                        "and molecular tumor board consultation"
+                    ),
                 }
             )
 
@@ -673,11 +679,24 @@ def _format_warning(warning: dict | str) -> str:
     """Render warning dictionaries as concise human-readable lines."""
     if isinstance(warning, dict):
         stage = warning.get("stage", "pipeline")
+        gene = warning.get("gene")
         message = warning.get("message", "No additional details")
         variant = warning.get("variant")
+        impact = warning.get("impact")
+        recommended_action = warning.get("recommended_action")
+
+        label = stage
+        if gene:
+            label = f"{stage}/{gene}"
+
+        base = f"{label}: {message}"
         if variant:
-            return f"{stage}: {message} ({variant})"
-        return f"{stage}: {message}"
+            base = f"{base} ({variant})"
+        if impact:
+            base = f"{base}. Impact: {impact}."
+        if recommended_action:
+            base = f"{base} Recommended action: {recommended_action}."
+        return base
     return str(warning)
 
 

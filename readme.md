@@ -17,7 +17,7 @@ PharmaGenomics Advisor is a **multi-agent AI system** that automates cancer geno
 1. **ACMG variant classifications** — Pathogenic, Likely Pathogenic, VUS, etc.
 2. **Drug recommendations** — Which drugs to use or avoid based on the patient's genetics
 3. **Literature evidence** — Published papers supporting each recommendation
-4. **Clinical report** — A unified JSON + Markdown document with full provenance
+4. **Clinical report** — Unified JSON + Markdown + HTML outputs with provenance and actionable warnings
 
 **All running locally. Zero API keys. Zero cloud costs.**
 
@@ -49,6 +49,9 @@ python3 scripts/demo.py --runtime adk
 
 # Optional: run storytelling demo with resistant EGFR + unrouted gene
 python3 scripts/demo.py --vcf data/samples/sample_variants_storytelling.vcf
+
+# Generate Kaggle-ready media assets (cover + architecture + report preview + thumbnail)
+python3 scripts/generate_media_assets.py
 ```
 
 ---
@@ -147,9 +150,13 @@ Run property tests with: `pytest tests/properties/ -v`
 
 ## Visual Assets
 
-![Pipeline Flowchart](docs/assets/pipeline-flowchart.svg)
+![Kaggle Cover](docs/assets/kaggle-cover.png)
 
-![DNA Concept Art (YouTube Thumbnail Candidate)](docs/assets/dna-concept-art.svg)
+![Pipeline Architecture](docs/assets/pipeline-architecture.png)
+
+![Report Preview](docs/assets/report-preview.png)
+
+![YouTube Thumbnail Candidate](docs/assets/youtube-thumbnail.png)
 
 ---
 

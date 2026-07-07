@@ -578,8 +578,14 @@ class ADKWorkflowRunner:
                 warnings.append(
                     {
                         "stage": "pgx",
+                        "gene": variant.gene or "unknown",
                         "variant": f"{variant.chromosome}:{variant.position}",
-                        "message": "No established pharmacogenomic guideline found",
+                        "message": "No established pharmacogenomic guideline found for this variant",
+                        "impact": "No gene-drug recommendation was generated",
+                        "recommended_action": (
+                            "Consider manual review of NCCN/ESMO guidance, clinical-trial eligibility, "
+                            "and molecular tumor board consultation"
+                        ),
                     }
                 )
 

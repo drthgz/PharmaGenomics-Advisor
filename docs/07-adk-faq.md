@@ -50,5 +50,6 @@ After a run, show:
 
 - `output/.../report.json`
 - `output/.../report.md`
+- `output/.../report.html`
 
 These outputs demonstrate end-to-end execution from VCF input to clinical report artifacts.

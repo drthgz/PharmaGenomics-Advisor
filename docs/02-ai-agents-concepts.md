@@ -522,7 +522,7 @@ Here's the full picture of how every concept connects in our system:
 4. **Pathogenic variants** → Sent to PGx Drug Advisor
 5. **PGx agent recommends** → Calls CPIC and PharmGKB MCP servers
 6. **Literature agent** → Searches local vector store (RAG) for supporting evidence
-7. **Report generated** → JSON + Markdown, with full provenance and audit trail
+7. **Report generated** → JSON + Markdown + HTML, with full provenance, tools summary, and actionable warning guidance
 
 ### Course Concepts Demonstrated
 
