@@ -116,16 +116,24 @@ class LLMInferenceClient:
             return False
         return True
 
+    def _variant_detail_string(self, classification: VariantClassification) -> str:
+        """Return a human-readable variant string from HGVS description or chrom:pos ref>alt.
+
+        Used by both _build_prompt and _placeholder_narrative to avoid duplicating
+        the same fallback construction logic in two places.
+        """
+        return (
+            classification.variant_description
+            or f"{classification.chromosome}:{classification.position} "
+            f"{classification.ref_allele}>{classification.alt_allele}"
+        )
+
     def _build_prompt(self, classification: VariantClassification) -> str:
         """Construct the LLM prompt including gene, variant details, classification, evidence, and relevance."""
         # Join evidence list into a single semicolon-delimited string so the LLM
         # sees all citations in one block rather than a Python list repr
         evidence = "; ".join(classification.evidence_references)
-        # Build a human-readable variant string from HGVS or chrom:pos ref>alt
-        variant_detail = (
-            classification.variant_description
-            or f"{classification.chromosome}:{classification.position} {classification.ref_allele}>{classification.alt_allele}"
-        )
+        variant_detail = self._variant_detail_string(classification)
         # Include explicit ref/alt allele values so the model never needs to
         # invent or template-fill allele placeholders in its response
         therapeutic_value = (
@@ -166,10 +174,7 @@ class LLMInferenceClient:
             else "Unknown"
         )
         # Include variant description so reviewers have context without the LLM narrative
-        variant_desc = (
-            classification.variant_description
-            or f"{classification.chromosome}:{classification.position} {classification.ref_allele}>{classification.alt_allele}"
-        )
+        variant_desc = self._variant_detail_string(classification)
         return (
             f"The {gene} variant {variant_desc} is classified as {acmg_value}. "
             "LLM-generated clinical narrative is unavailable (Ollama not reachable). "

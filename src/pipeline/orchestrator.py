@@ -288,13 +288,11 @@ class PipelineOrchestrator:
 
         # PharmGKB is consulted for EGFR TKI-sensitive variants and TP53 pathogenic variants —
         # both have curated targeted therapy and chemosensitivity annotations respectively
-        if (
-            (
-                variant.gene == "EGFR"
-                and classification.therapeutic_relevance == TherapeuticRelevance.TKI_SENSITIVE
-            )
-            or variant.gene == "TP53"
-        ) and pharmgkb_result.get("status") == "success":
+        is_egfr_tki_sensitive = (
+            variant.gene == "EGFR"
+            and classification.therapeutic_relevance == TherapeuticRelevance.TKI_SENSITIVE
+        )
+        if (is_egfr_tki_sensitive or variant.gene == "TP53") and pharmgkb_result.get("status") == "success":
             for row in pharmgkb_result.get("results", []):
                 key = (row.get("gene", ""), row.get("drug", ""))
                 if key in seen_keys:
@@ -485,8 +483,11 @@ def render_markdown_report(report: ClinicalReport) -> str:
                 f"| {rec.action.value} | {rec.evidence_level} | {source_link} |"
             )
         lines.append("")
-        # Surface contraindications
-        contra_items = [(rec.drug_name, rec.gene, c) for rec in report.drug_recommendations for c in rec.contraindications]
+        # Surface contraindications — collected by iterating each recommendation's list
+        contra_items: list[tuple[str, str, str]] = []
+        for rec in report.drug_recommendations:
+            for contra in rec.contraindications:
+                contra_items.append((rec.drug_name, rec.gene, contra))
         if contra_items:
             lines.append("**Contraindications / Special Considerations:**")
             for drug, gene, contra in contra_items:

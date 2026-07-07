@@ -117,7 +117,10 @@ async def lookup_cpic_guidelines(gene: str) -> dict:
             "recommendation": "alternative therapy",
             "cpic_level": "B",
             "url": "https://cpicpgx.org/guidelines/",
-            "contraindications": ["R248W gain-of-function mutation may confer cisplatin resistance"],
+            "contraindications": [
+                "Gain-of-function hotspot mutations (e.g., R248W, R273H) may confer "
+                "cisplatin resistance — verify functional status before prescribing"
+            ],
         },
         {
             "gene": "TP53",
