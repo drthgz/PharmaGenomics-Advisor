@@ -1,6 +1,10 @@
 """Pipeline orchestration module."""
 
-from src.pipeline.orchestrator import PipelineOrchestrator, render_markdown_report
+from src.pipeline.orchestrator import (
+    PipelineOrchestrator,
+    render_html_report,
+    render_markdown_report,
+)
 
 try:
     from src.pipeline.adk_workflow import ADKNotAvailableError, ADKWorkflowRunner
@@ -15,5 +19,6 @@ __all__ = [
 	"PipelineOrchestrator",
 	"ADKWorkflowRunner",
 	"ADKNotAvailableError",
+    "render_html_report",
 	"render_markdown_report",
 ]

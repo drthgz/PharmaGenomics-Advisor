@@ -13,7 +13,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.pipeline import ADKNotAvailableError, ADKWorkflowRunner, PipelineOrchestrator
+from src.pipeline import (
+    ADKNotAvailableError,
+    ADKWorkflowRunner,
+    PipelineOrchestrator,
+    render_html_report,
+)
 
 # ─── Logging Configuration ────────────────────────────────────────────────────
 # Configure INFO-level logging for agent modules so dispatch and response events
@@ -142,12 +147,14 @@ def main() -> int:
 
     json_path = output_dir / "report.json"
     md_path = output_dir / "report.md"
+    html_path = output_dir / "report.html"
 
     json_path.write_text(
         json.dumps(report.model_dump(mode="json"), indent=2),
         encoding="utf-8",
     )
     md_path.write_text(report.markdown_summary, encoding="utf-8")
+    html_path.write_text(render_html_report(report), encoding="utf-8")
 
     # ─── Pipeline Summary Statistics ──────────────────────────────────────────
     # Print summary stats last so they appear after all agent/narrative output,
@@ -163,6 +170,7 @@ def main() -> int:
     print(f"Warnings: {len(report.warnings)}")
     print(f"JSON report: {json_path}")
     print(f"Markdown report: {md_path}")
+    print(f"HTML report: {html_path}")
 
     return 0
 

@@ -8,6 +8,7 @@ and report generation into one callable entrypoint.
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import os
 import time
@@ -461,7 +462,7 @@ def render_markdown_report(report: ClinicalReport) -> str:
             lines.append(f"  - Synthesis: {block.synthesis_paragraph}")
 
     lines.append("")
-    lines.append("## Capstone Coverage")
+    lines.append("## Tools and Platform Features")
     lines.append(f"- Agentic AI (multi-agent): {report.capstone_coverage.agentic_ai}")
     lines.append(f"- ADK runtime path: {report.capstone_coverage.adk_runtime}")
     lines.append(f"- MCP tools/data bridge: {report.capstone_coverage.mcp_tools}")
@@ -477,9 +478,216 @@ def render_markdown_report(report: ClinicalReport) -> str:
     if not report.warnings:
         lines.append("None")
     for warning in report.warnings:
-        lines.append(f"- {warning}")
+        lines.append(f"- {_format_warning(warning)}")
 
     return "\n".join(lines)
+
+
+def render_html_report(report: ClinicalReport) -> str:
+        """Render a visually rich HTML report suitable for broad audiences."""
+        generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        def _flag(value: bool) -> str:
+                return "Used" if value else "Not used"
+
+        classification_cards: list[str] = []
+        for item in report.classifications:
+                summary = (
+                        f"{item.variant_description}: "
+                        f"{item.classification.value if item.classification else 'Unavailable'} "
+                        f"({item.confidence.value if item.confidence else 'Unknown'})"
+                )
+                narrative = _format_html_narrative(item.clinical_narrative)
+                classification_cards.append(
+                        """
+                        <article class=\"card\"> 
+                            <h3>{summary}</h3>
+                            <p>{narrative}</p>
+                        </article>
+                        """.format(summary=_escape(summary), narrative=narrative)
+                )
+
+        drug_rows: list[str] = []
+        for rec in report.drug_recommendations:
+                drug_rows.append(
+                        """
+                        <tr>
+                            <td>{gene}</td>
+                            <td>{variant}</td>
+                            <td>{drug}</td>
+                            <td>{action}</td>
+                            <td>{evidence}</td>
+                        </tr>
+                        """.format(
+                                gene=_escape(rec.gene),
+                                variant=_escape(rec.variant),
+                                drug=_escape(rec.drug_name),
+                                action=_escape(rec.action.value),
+                                evidence=_escape(rec.evidence_level),
+                        )
+                )
+
+        literature_blocks: list[str] = []
+        for block in report.literature_evidence:
+                literature_blocks.append(
+                        """
+                        <article class=\"card\"> 
+                            <h3>{query}</h3>
+                            <p><strong>Citations:</strong> {count}</p>
+                            <p>{synthesis}</p>
+                        </article>
+                        """.format(
+                                query=_escape(block.query),
+                                count=len(block.citations),
+                                synthesis=_escape(block.synthesis_paragraph or "No synthesis generated."),
+                        )
+                )
+
+        warnings_html = "".join(
+            f"<li>{_escape(_format_warning(warning))}</li>" for warning in report.warnings
+        ) or "<li>None</li>"
+
+        coverage_rows = "".join(
+                [
+                        f"<tr><td>Multi-agent pipeline</td><td>{_flag(report.capstone_coverage.agentic_ai)}</td></tr>",
+                        f"<tr><td>ADK runtime path</td><td>{_flag(report.capstone_coverage.adk_runtime)}</td></tr>",
+                        f"<tr><td>MCP tools and data bridge</td><td>{_flag(report.capstone_coverage.mcp_tools)}</td></tr>",
+                        f"<tr><td>Ollama inference</td><td>{_flag(report.capstone_coverage.ollama_inference)}</td></tr>",
+                        f"<tr><td>Security layer</td><td>{_flag(report.capstone_coverage.security_layer)}</td></tr>",
+                        f"<tr><td>Agent skills configuration</td><td>{_flag(report.capstone_coverage.agent_skills_configured)}</td></tr>",
+                        f"<tr><td>Deployment assets</td><td>{_flag(report.capstone_coverage.deployability_assets)}</td></tr>",
+                ]
+        )
+        coverage_notes = "".join(
+                f"<li>{_escape(note)}</li>" for note in report.capstone_coverage.notes
+        )
+
+        return f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>PharmaGenomics Advisor Clinical Report</title>
+    <style>
+        :root {{
+            --bg: #f4f6f8;
+            --panel: #ffffff;
+            --ink: #0f1720;
+            --muted: #4b5968;
+            --accent: #0f4c81;
+            --accent-soft: #e5eef7;
+            --ok: #0b7a54;
+            --warn: #9a3f1a;
+            --border: #d9e1e8;
+        }}
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: linear-gradient(180deg, #eef4f9 0%, var(--bg) 70%); color: var(--ink); }}
+        .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
+        .header {{ background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: 0 10px 24px rgba(12, 38, 59, 0.08); }}
+        .header h1 {{ margin: 0 0 8px; font-size: 1.5rem; color: var(--accent); }}
+        .header p {{ margin: 4px 0; color: var(--muted); }}
+        .grid {{ display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-top: 14px; }}
+        .kpi {{ background: var(--accent-soft); border-radius: 10px; padding: 12px; border: 1px solid #c8d9ea; }}
+        .kpi strong {{ display: block; font-size: 1.2rem; color: var(--accent); }}
+        .section {{ margin-top: 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }}
+        h2 {{ margin: 0 0 12px; font-size: 1.1rem; color: #123d65; border-bottom: 1px solid var(--border); padding-bottom: 8px; }}
+        .stack {{ display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
+        .card {{ background: #fbfdff; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }}
+        .card h3 {{ margin: 0 0 8px; font-size: 0.98rem; }}
+        .card p {{ margin: 0; line-height: 1.45; color: var(--muted); }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 0.95rem; }}
+        th, td {{ border: 1px solid var(--border); padding: 8px; text-align: left; vertical-align: top; }}
+        th {{ background: #edf3f8; color: #173a5b; }}
+        ul {{ margin: 0; padding-left: 20px; }}
+        .notes {{ color: var(--muted); margin-top: 10px; }}
+        .warn {{ color: var(--warn); }}
+        @media (max-width: 640px) {{
+            .header h1 {{ font-size: 1.25rem; }}
+            th, td {{ font-size: 0.88rem; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class=\"wrap\">
+        <header class=\"header\">
+            <h1>PharmaGenomics Advisor Clinical Report</h1>
+            <p><strong>Report ID:</strong> {_escape(report.report_id)}</p>
+            <p><strong>Generated:</strong> {_escape(generated)}</p>
+            <p><strong>Pipeline Version:</strong> {_escape(report.pipeline_version)}</p>
+            <div class=\"grid\">
+                <div class=\"kpi\"><span>Variants</span><strong>{len(report.variant_summary)}</strong></div>
+                <div class=\"kpi\"><span>Classifications</span><strong>{len(report.classifications)}</strong></div>
+                <div class=\"kpi\"><span>Drug Recommendations</span><strong>{len(report.drug_recommendations)}</strong></div>
+                <div class=\"kpi\"><span>Literature Bundles</span><strong>{len(report.literature_evidence)}</strong></div>
+                <div class=\"kpi\"><span>Execution Time</span><strong>{report.total_execution_time_seconds:.2f}s</strong></div>
+            </div>
+        </header>
+
+        <section class=\"section\">
+            <h2>Variant Classifications</h2>
+            <div class=\"stack\">{''.join(classification_cards) or '<p>No routed variants were classified.</p>'}</div>
+        </section>
+
+        <section class=\"section\">
+            <h2>Therapeutic Recommendations</h2>
+            <table>
+                <thead>
+                    <tr><th>Gene</th><th>Variant</th><th>Drug</th><th>Action</th><th>Evidence</th></tr>
+                </thead>
+                <tbody>
+                    {''.join(drug_rows) or '<tr><td colspan="5">No pharmacogenomic recommendations generated.</td></tr>'}
+                </tbody>
+            </table>
+        </section>
+
+        <section class=\"section\">
+            <h2>Literature Evidence</h2>
+            <div class=\"stack\">{''.join(literature_blocks) or '<p>No literature evidence generated.</p>'}</div>
+        </section>
+
+        <section class=\"section\">
+            <h2>Tools and Platform Features</h2>
+            <table>
+                <thead><tr><th>Capability</th><th>Status</th></tr></thead>
+                <tbody>{coverage_rows}</tbody>
+            </table>
+            <ul class=\"notes\">{coverage_notes}</ul>
+        </section>
+
+        <section class=\"section\">
+            <h2>Clinical and Operational Warnings</h2>
+            <ul class=\"warn\">{warnings_html}</ul>
+        </section>
+    </div>
+</body>
+</html>
+"""
+
+
+def _escape(value: str) -> str:
+        """Escape user/model text before inserting into HTML output."""
+        return html.escape(value, quote=True)
+
+
+def _format_warning(warning: dict | str) -> str:
+    """Render warning dictionaries as concise human-readable lines."""
+    if isinstance(warning, dict):
+        stage = warning.get("stage", "pipeline")
+        message = warning.get("message", "No additional details")
+        variant = warning.get("variant")
+        if variant:
+            return f"{stage}: {message} ({variant})"
+        return f"{stage}: {message}"
+    return str(warning)
+
+
+def _format_html_narrative(narrative: str) -> str:
+    """Convert markdown-like LLM narrative text into HTML-safe display text."""
+    if not narrative:
+        return "No narrative generated."
+    cleaned = narrative.replace("**", "").replace("*", "")
+    escaped = _escape(cleaned)
+    return escaped.replace("\n", "<br />")
 
 
 def _build_capstone_coverage(

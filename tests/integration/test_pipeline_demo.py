@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.pipeline.orchestrator import PipelineOrchestrator
+from src.pipeline.orchestrator import PipelineOrchestrator, render_html_report
 
 
 def test_pipeline_runs_on_sample_vcf(monkeypatch):
@@ -56,3 +56,8 @@ def test_pipeline_runs_on_sample_vcf(monkeypatch):
     assert len(report.classifications) == 3
     assert len(report.drug_recommendations) >= 2
     assert report.markdown_summary.startswith("# PharmaGenomics Advisor Clinical Report")
+    assert "## Tools and Platform Features" in report.markdown_summary
+
+    html_report = render_html_report(report)
+    assert "<html" in html_report
+    assert "Tools and Platform Features" in html_report
