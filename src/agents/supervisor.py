@@ -14,10 +14,12 @@ from src.inference.ollama_client import LLMInferenceClient
 from src.models import (
     AgentMessage,
     MessageType,
+    TherapeuticRelevance,
     Variant,
     VariantClassification,
 )
 from src.pipeline.orchestrator import (
+    _egfr_therapeutic_relevance,
     _rule_based_acmg,
     _variant_description,
 )
@@ -210,6 +212,7 @@ class SupervisorAgent:
             classification=classification,
             confidence=confidence,
             evidence_references=["Rule-based fallback assessment"],
+            therapeutic_relevance=_egfr_therapeutic_relevance(variant) or TherapeuticRelevance.UNKNOWN,
             data_sources_queried=["local_rules"],
             # Explicitly flag fallback usage so reviewers can distinguish
             # AI-classified results from heuristic-only results in the report.

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from src.models import (
     AgentMessage,
     MessageType,
+    TherapeuticRelevance,
     Variant,
     VariantClassification,
 )
@@ -49,6 +50,7 @@ async def brca_handler(msg: AgentMessage) -> AgentMessage:
             classification=classification,
             confidence=confidence,
             evidence_references=["Rule-based assessment from local knowledge base"],
+            therapeutic_relevance=TherapeuticRelevance.UNKNOWN,
             data_sources_queried=["local_rules"],
         )
 
@@ -143,6 +145,7 @@ async def tp53_handler(msg: AgentMessage) -> AgentMessage:
             confidence=confidence,
             evidence_references=["Rule-based assessment from local knowledge base"],
             functional_status=functional_status,
+            therapeutic_relevance=TherapeuticRelevance.UNKNOWN,
             data_sources_queried=["local_rules"],
         )
 

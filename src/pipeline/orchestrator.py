@@ -232,7 +232,7 @@ class PipelineOrchestrator:
         # Combine rule-based classification with gene-specific annotations;
         # therapeutic relevance and functional status are only set for EGFR/TP53 respectively
         classification, confidence = _rule_based_acmg(variant)
-        therapeutic_relevance = _egfr_therapeutic_relevance(variant)
+        therapeutic_relevance = _egfr_therapeutic_relevance(variant) or TherapeuticRelevance.UNKNOWN
         functional_status = _tp53_functional_status(variant)
 
         return VariantClassification(
