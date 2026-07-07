@@ -98,8 +98,8 @@ flowchart LR
         DRUG -.inference.-> LLMCLIENT
         LIT -.inference.-> LLMCLIENT
 
-        classDef infra fill:#f4f4f4,stroke:#666,stroke-width:1px;
-        classDef agent fill:#e6f3ff,stroke:#3399ff,stroke-width:2px;
+        classDef infra fill:#143434,stroke:#666,stroke-width:1px;
+        classDef agent fill:#364340,stroke:#3399ff,stroke-width:2px;
 ```
 
 ---
