@@ -8,6 +8,7 @@ and report generation into one callable entrypoint.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 
@@ -34,6 +35,8 @@ from src.models import (
 from src.parsers import VCFParser
 from src.rag.literature_service import LiteratureService
 from src.security.layer import SecurityLayer
+
+logger = logging.getLogger(__name__)
 
 
 ACTIONABLE_CLASSES = {
@@ -77,6 +80,8 @@ class PipelineOrchestrator:
         literature: list[LiteratureResult] = []
         provenance: list[ProvenanceMetadata] = []
 
+        # Filter routable variants
+        routable_variants: list[Variant] = []
         for variant in parse_result.variants:
             if variant.route_status == RouteStatus.UNROUTED or not variant.gene:
                 warnings.append(
@@ -86,10 +91,25 @@ class PipelineOrchestrator:
                         "message": "Unsupported or missing gene annotation",
                     }
                 )
-                continue
+            else:
+                routable_variants.append(variant)
 
-            classification = self._classify_variant(variant, warnings)
-            classifications.append(classification)
+        # Try supervisor-based classification first; fall back to rule-based loop
+        try:
+            classifications = self._classify_with_supervisor(routable_variants)
+        except Exception as exc:
+            logger.warning(
+                "Supervisor-based classification failed, falling back to rule-based: %s",
+                str(exc),
+            )
+            classifications = []
+            for variant in routable_variants:
+                classification = self._classify_variant(variant, warnings)
+                classifications.append(classification)
+
+        # Build provenance and recommendations from classifications
+        for i, variant in enumerate(routable_variants):
+            classification = classifications[i]
             provenance.append(
                 ProvenanceMetadata(
                     source_agent=f"{variant.gene.lower()}_agent",
@@ -124,6 +144,42 @@ class PipelineOrchestrator:
         )
         report.markdown_summary = render_markdown_report(report)
         return report
+
+    def _classify_with_supervisor(
+        self, variants: list[Variant]
+    ) -> list[VariantClassification]:
+        """Classify variants using the SupervisorAgent and message bus.
+
+        Creates a MessageBus, registers specialist handlers, instantiates
+        an LLMInferenceClient and SupervisorAgent, then dispatches variants
+        for concurrent classification with clinical narrative generation.
+
+        Args:
+            variants: List of routable Variant objects with supported genes.
+
+        Returns:
+            List of VariantClassification objects (with clinical narratives attached).
+
+        Raises:
+            Any exception if the supervisor-based classification fails.
+        """
+        # Deferred imports to avoid circular dependency
+        # (handlers and supervisor import from this module)
+        from src.agents.handlers import brca_handler, egfr_handler, tp53_handler
+        from src.agents.message_bus import MessageBus
+        from src.agents.supervisor import SupervisorAgent
+        from src.inference.ollama_client import LLMInferenceClient
+
+        bus = MessageBus()
+        bus.register_agent("brca_agent", brca_handler)
+        bus.register_agent("egfr_agent", egfr_handler)
+        bus.register_agent("tp53_agent", tp53_handler)
+
+        llm_client = LLMInferenceClient()
+        supervisor = SupervisorAgent(bus, llm_client)
+
+        classifications = asyncio.run(supervisor.analyze_variants(variants))
+        return classifications
 
     def _classify_variant(self, variant: Variant, warnings: list[dict]) -> VariantClassification:
         clinvar = asyncio.run(lookup_clinvar(variant))
@@ -322,6 +378,8 @@ def render_markdown_report(report: ClinicalReport) -> str:
             f"- {item.variant_description}: {item.classification.value if item.classification else 'Unavailable'} "
             f"({item.confidence.value if item.confidence else 'Unknown'})"
         )
+        if item.clinical_narrative:
+            lines.append(f"  - Clinical Narrative: {item.clinical_narrative}")
 
     lines.append("")
     lines.append("## Drug Recommendations")

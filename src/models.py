@@ -58,6 +58,14 @@ class RouteStatus(str, Enum):
     UNROUTED = "unrouted"
 
 
+class MessageType(str, Enum):
+    """Agent message type enum for inter-agent communication."""
+
+    CLASSIFY_REQUEST = "CLASSIFY_REQUEST"
+    CLASSIFY_RESPONSE = "CLASSIFY_RESPONSE"
+    ERROR = "ERROR"
+
+
 class RecommendationAction(str, Enum):
     """Drug recommendation action type."""
 
@@ -101,6 +109,16 @@ class Variant(BaseModel):
     route_status: RouteStatus = Field(default=RouteStatus.UNROUTED)
 
 
+class AgentMessage(BaseModel):
+    """Structured payload exchanged between Supervisor and Specialist agents."""
+
+    message_type: MessageType
+    sender: str = Field(..., description="Agent name of the sender")
+    recipient: str = Field(..., description="Agent name of the intended recipient")
+    payload: dict = Field(default_factory=dict, description="Message-specific data")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class ParseResult(BaseModel):
     """Result of VCF file parsing."""
 
@@ -133,6 +151,9 @@ class VariantClassification(BaseModel):
     )
     data_sources_queried: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+    clinical_narrative: str = Field(
+        default="", max_length=2000, description="LLM-generated clinical interpretation"
+    )
 
 
 class DrugRecommendation(BaseModel):

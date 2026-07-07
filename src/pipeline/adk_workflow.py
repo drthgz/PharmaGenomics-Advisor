@@ -1,17 +1,18 @@
 """ADK-backed workflow runner for PharmaGenomics Advisor.
 
 This module adds an explicit Google ADK execution path while preserving the
-existing deterministic pipeline behavior.
+existing deterministic pipeline behavior. Validates ADK 2.x API symbols at
+import time and integrates SupervisorAgent message-passing for classification.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import logging
 import time
 from pathlib import Path
 from typing import Any
-
-from google.genai import types
 
 from src.infrastructure.ollama_check import check_ollama_ready
 from src.models import (
@@ -36,9 +37,20 @@ from src.pipeline.orchestrator import (
     render_markdown_report,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ADKNotAvailableError(RuntimeError):
     """Raised when Google ADK runtime cannot be imported or used."""
+
+
+# Required ADK symbols that must exist for the workflow to function
+_REQUIRED_ADK_SYMBOLS = {
+    "Workflow": ("google.adk", "Workflow"),
+    "workflow.START": ("google.adk", "workflow"),
+    "Runner": ("google.adk", "Runner"),
+    "InMemorySessionService": ("google.adk.sessions", "InMemorySessionService"),
+}
 
 
 class ADKWorkflowRunner:
@@ -53,6 +65,14 @@ class ADKWorkflowRunner:
         adk = self._import_adk()
         workflow = self._build_workflow(adk)
         runner = self._build_runner(adk, workflow)
+
+        # Import types for user message construction
+        try:
+            from google.genai import types
+        except ImportError as exc:
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: google.genai.types"
+            ) from exc
 
         user_message = types.UserContent(parts=[types.Part.from_text(text="run pipeline")])
         state_delta = {
@@ -79,24 +99,78 @@ class ADKWorkflowRunner:
         )
 
     def _import_adk(self):
+        """Import and validate all required ADK symbols.
+
+        Validates that google.adk and google.adk.sessions modules can be imported
+        and that all required symbols (Workflow, workflow.START, Runner,
+        InMemorySessionService) exist.
+
+        Returns:
+            The google.adk module.
+
+        Raises:
+            ADKNotAvailableError: If any required symbol is missing, with the
+                specific symbol name included in the error message.
+        """
+        # Try to import the base ADK module
         try:
-            return importlib.import_module("google.adk")
-        except Exception as exc:  # pragma: no cover - environment-dependent
+            adk_module = importlib.import_module("google.adk")
+        except Exception as exc:
             raise ADKNotAvailableError(
-                "google-adk runtime is unavailable. Install with: "
-                "python3 -m pip install 'google-adk>=2.0.0'"
+                "Missing ADK symbol: google.adk (package not installed). "
+                "Install with: python3 -m pip install 'google-adk>=2.0.0'"
             ) from exc
 
+        # Validate Workflow symbol
+        if not hasattr(adk_module, "Workflow"):
+            raise ADKNotAvailableError("Missing ADK symbol: Workflow")
+
+        # Validate workflow sub-module and START
+        workflow_submodule = getattr(adk_module, "workflow", None)
+        if workflow_submodule is None:
+            raise ADKNotAvailableError("Missing ADK symbol: workflow")
+        if not hasattr(workflow_submodule, "START"):
+            raise ADKNotAvailableError("Missing ADK symbol: workflow.START")
+
+        # Validate Runner symbol
+        if not hasattr(adk_module, "Runner"):
+            raise ADKNotAvailableError("Missing ADK symbol: Runner")
+
+        # Validate InMemorySessionService from google.adk.sessions
+        try:
+            sessions_module = importlib.import_module("google.adk.sessions")
+        except Exception as exc:
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: InMemorySessionService (google.adk.sessions not importable)"
+            ) from exc
+
+        if not hasattr(sessions_module, "InMemorySessionService"):
+            raise ADKNotAvailableError("Missing ADK symbol: InMemorySessionService")
+
+        return adk_module
+
     def _build_workflow(self, adk_module):
+        """Construct the ADK Workflow with all five pipeline stages as distinct nodes.
+
+        Args:
+            adk_module: The validated google.adk module.
+
+        Returns:
+            A Workflow object with ordered edges connecting the five stages.
+
+        Raises:
+            ADKNotAvailableError: If Workflow or START symbols are not accessible.
+        """
         Workflow = getattr(adk_module, "Workflow", None)
         workflow_module = getattr(adk_module, "workflow", None)
-        start = getattr(workflow_module, "START", None)
+        start = getattr(workflow_module, "START", None) if workflow_module else None
 
-        if Workflow is None or start is None:
-            raise ADKNotAvailableError(
-                "Current google-adk installation does not expose Workflow/START API"
-            )
+        if Workflow is None:
+            raise ADKNotAvailableError("Missing ADK symbol: Workflow")
+        if start is None:
+            raise ADKNotAvailableError("Missing ADK symbol: workflow.START")
 
+        # Register all five pipeline stages as distinct callable node functions
         validate_node = self._node_validate_parse
         classify_node = self._node_classify
         recommend_node = self._node_recommend
@@ -118,12 +192,32 @@ class ADKWorkflowRunner:
         )
 
     def _build_runner(self, adk_module, workflow):
-        Runner = getattr(adk_module, "Runner", None)
-        sessions_module = importlib.import_module("google.adk.sessions")
-        InMemorySessionService = getattr(sessions_module, "InMemorySessionService", None)
+        """Construct the ADK Runner with InMemorySessionService.
 
-        if Runner is None or InMemorySessionService is None:
-            raise ADKNotAvailableError("ADK Runner or InMemorySessionService not found")
+        Args:
+            adk_module: The validated google.adk module.
+            workflow: The Workflow object to run.
+
+        Returns:
+            A Runner instance configured for the workflow.
+
+        Raises:
+            ADKNotAvailableError: If Runner or InMemorySessionService symbols are missing.
+        """
+        Runner = getattr(adk_module, "Runner", None)
+        if Runner is None:
+            raise ADKNotAvailableError("Missing ADK symbol: Runner")
+
+        try:
+            sessions_module = importlib.import_module("google.adk.sessions")
+        except Exception as exc:
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: InMemorySessionService (google.adk.sessions not importable)"
+            ) from exc
+
+        InMemorySessionService = getattr(sessions_module, "InMemorySessionService", None)
+        if InMemorySessionService is None:
+            raise ADKNotAvailableError("Missing ADK symbol: InMemorySessionService")
 
         return Runner(
             app_name="pharmagenomics-advisor",
@@ -138,6 +232,11 @@ class ADKWorkflowRunner:
         session_id: str,
         check_ollama: bool = False,
     ) -> dict[str, Any]:
+        """Stage 1: Validate input and parse VCF file.
+
+        Performs security validation and VCF parsing, producing the ParseResult
+        that subsequent stages operate on.
+        """
         warnings: list[dict] = []
         if check_ollama:
             try:
@@ -163,80 +262,216 @@ class ADKWorkflowRunner:
         }
 
     async def _node_classify(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        """Stage 2: Classify variants using SupervisorAgent message-passing.
+
+        Integrates the SupervisorAgent for agent-based classification of variants
+        with supported genes (BRCA1, BRCA2, EGFR, TP53). Falls back to direct
+        rule-based classification if the agent pipeline encounters any errors.
+        """
         parse_result = node_input["parse_result"]
         warnings = node_input.get("warnings", [])
         classifications = []
         provenance = []
 
-        for variant in parse_result.variants:
-            if variant.route_status == RouteStatus.UNROUTED or not variant.gene:
-                warnings.append(
-                    {
-                        "stage": "routing",
-                        "variant": f"{variant.chromosome}:{variant.position}",
-                        "message": "Unsupported or missing gene annotation",
-                    }
-                )
-                continue
+        # Attempt agent-based classification via SupervisorAgent
+        agent_classifications = await self._classify_with_supervisor(
+            parse_result.variants, warnings
+        )
 
-            clinvar = await orchestrator_module.lookup_clinvar(variant)
-            data_sources = ["local_rules"]
-            limitations: list[str] = []
-            evidence: list[str] = []
+        if agent_classifications is not None:
+            # Successfully used SupervisorAgent — map results back
+            agent_classified_keys = {
+                (c.chromosome, c.position, c.ref_allele, c.alt_allele): c
+                for c in agent_classifications
+            }
 
-            if clinvar.get("status") == "success":
-                data_sources.append("clinvar")
-                for result in clinvar.get("results", [])[:2]:
-                    significance = result.get("clinical_significance", "unknown")
-                    review = result.get("review_status", "unknown")
-                    evidence.append(f"ClinVar: {significance} ({review})")
-            elif clinvar.get("status") == "disabled":
-                limitations.append("ClinVar online lookup disabled")
-            else:
-                limitations.append("ClinVar unavailable or no records found")
-                warnings.append(
-                    {
-                        "stage": "clinvar",
-                        "variant": f"{variant.chromosome}:{variant.position}",
-                        "message": clinvar.get("error", clinvar.get("status", "lookup failed")),
-                    }
-                )
+            for variant in parse_result.variants:
+                if variant.route_status == RouteStatus.UNROUTED or not variant.gene:
+                    warnings.append(
+                        {
+                            "stage": "routing",
+                            "variant": f"{variant.chromosome}:{variant.position}",
+                            "message": "Unsupported or missing gene annotation",
+                        }
+                    )
+                    continue
 
-            classification_value, confidence = _rule_based_acmg(variant)
-            therapeutic_relevance = _egfr_therapeutic_relevance(variant)
-            functional_status = _tp53_functional_status(variant)
+                key = (variant.chromosome, variant.position, variant.ref_allele, variant.alt_allele)
+                classification = agent_classified_keys.get(key)
 
-            classification = VariantClassification(
-                gene=variant.gene,
-                variant_description=_variant_description(variant),
-                chromosome=variant.chromosome,
-                position=variant.position,
-                ref_allele=variant.ref_allele,
-                alt_allele=variant.alt_allele,
-                classification=classification_value,
-                confidence=confidence,
-                evidence_references=evidence or ["Rule-based assessment from local knowledge base"],
-                therapeutic_relevance=therapeutic_relevance,
-                functional_status=functional_status,
-                data_sources_queried=data_sources,
-                limitations=limitations,
-            )
+                if classification is not None:
+                    classifications.append(classification)
+                    provenance.append(
+                        ProvenanceMetadata(
+                            source_agent=f"{variant.gene.lower()}_agent",
+                            data_sources_queried=classification.data_sources_queried,
+                            confidence=classification.confidence,
+                        )
+                    )
+                else:
+                    # Variant not handled by supervisor (unsupported gene) — fallback
+                    classification = await self._classify_variant_direct(variant, warnings)
+                    if classification:
+                        classifications.append(classification)
+                        provenance.append(
+                            ProvenanceMetadata(
+                                source_agent=f"{variant.gene.lower()}_agent",
+                                data_sources_queried=classification.data_sources_queried,
+                                confidence=classification.confidence,
+                            )
+                        )
+        else:
+            # Fallback: direct rule-based classification for all variants
+            for variant in parse_result.variants:
+                if variant.route_status == RouteStatus.UNROUTED or not variant.gene:
+                    warnings.append(
+                        {
+                            "stage": "routing",
+                            "variant": f"{variant.chromosome}:{variant.position}",
+                            "message": "Unsupported or missing gene annotation",
+                        }
+                    )
+                    continue
 
-            classifications.append(classification)
-            provenance.append(
-                ProvenanceMetadata(
-                    source_agent=f"{variant.gene.lower()}_agent",
-                    data_sources_queried=classification.data_sources_queried,
-                    confidence=classification.confidence,
-                )
-            )
+                classification = await self._classify_variant_direct(variant, warnings)
+                if classification:
+                    classifications.append(classification)
+                    provenance.append(
+                        ProvenanceMetadata(
+                            source_agent=f"{variant.gene.lower()}_agent",
+                            data_sources_queried=classification.data_sources_queried,
+                            confidence=classification.confidence,
+                        )
+                    )
 
         node_input["warnings"] = warnings
         node_input["classifications"] = classifications
         node_input["provenance"] = provenance
         return node_input
 
+    async def _classify_with_supervisor(
+        self, variants: list, warnings: list[dict]
+    ) -> list[VariantClassification] | None:
+        """Attempt to classify variants using the SupervisorAgent with message-passing.
+
+        Creates a MessageBus, registers specialist handlers, and delegates
+        classification to the SupervisorAgent. Returns None on any failure
+        to signal that the caller should fall back to direct classification.
+
+        Args:
+            variants: List of Variant objects to classify.
+            warnings: Mutable warnings list for logging issues.
+
+        Returns:
+            List of VariantClassification objects, or None if agent pipeline fails.
+        """
+        try:
+            from src.agents.message_bus import MessageBus
+            from src.agents.handlers import brca_handler, egfr_handler, tp53_handler
+            from src.agents.supervisor import SupervisorAgent
+            from src.inference.ollama_client import LLMInferenceClient
+
+            # Create message bus and register specialist handlers
+            bus = MessageBus()
+            bus.register_agent("brca_agent", brca_handler)
+            bus.register_agent("egfr_agent", egfr_handler)
+            bus.register_agent("tp53_agent", tp53_handler)
+
+            # Create LLM client for narrative generation
+            llm_client = LLMInferenceClient()
+
+            # Create supervisor agent
+            supervisor = SupervisorAgent(
+                bus=bus,
+                llm_client=llm_client,
+                audit_logger=None,
+            )
+
+            # Run agent-based classification
+            results = await supervisor.analyze_variants(variants)
+            logger.info(
+                "SupervisorAgent classified %d variants via message-passing", len(results)
+            )
+            return results
+
+        except Exception as exc:
+            logger.warning(
+                "SupervisorAgent classification failed, falling back to direct: %s",
+                str(exc),
+            )
+            warnings.append(
+                {
+                    "stage": "classify_supervisor",
+                    "message": f"Agent-based classification failed: {str(exc)}; using rule-based fallback",
+                }
+            )
+            return None
+
+    async def _classify_variant_direct(
+        self, variant: Any, warnings: list[dict]
+    ) -> VariantClassification | None:
+        """Classify a single variant using direct rule-based logic with ClinVar lookup.
+
+        This is the fallback path used when SupervisorAgent is not available.
+
+        Args:
+            variant: A Variant object to classify.
+            warnings: Mutable warnings list for logging issues.
+
+        Returns:
+            A VariantClassification, or None if the variant cannot be classified.
+        """
+        clinvar = await orchestrator_module.lookup_clinvar(variant)
+        data_sources = ["local_rules"]
+        limitations: list[str] = []
+        evidence: list[str] = []
+
+        if clinvar.get("status") == "success":
+            data_sources.append("clinvar")
+            for result in clinvar.get("results", [])[:2]:
+                significance = result.get("clinical_significance", "unknown")
+                review = result.get("review_status", "unknown")
+                evidence.append(f"ClinVar: {significance} ({review})")
+        elif clinvar.get("status") == "disabled":
+            limitations.append("ClinVar online lookup disabled")
+        else:
+            limitations.append("ClinVar unavailable or no records found")
+            warnings.append(
+                {
+                    "stage": "clinvar",
+                    "variant": f"{variant.chromosome}:{variant.position}",
+                    "message": clinvar.get("error", clinvar.get("status", "lookup failed")),
+                }
+            )
+
+        classification_value, confidence = _rule_based_acmg(variant)
+        therapeutic_relevance = _egfr_therapeutic_relevance(variant)
+        functional_status = _tp53_functional_status(variant)
+
+        classification = VariantClassification(
+            gene=variant.gene,
+            variant_description=_variant_description(variant),
+            chromosome=variant.chromosome,
+            position=variant.position,
+            ref_allele=variant.ref_allele,
+            alt_allele=variant.alt_allele,
+            classification=classification_value,
+            confidence=confidence,
+            evidence_references=evidence or ["Rule-based assessment from local knowledge base"],
+            therapeutic_relevance=therapeutic_relevance,
+            functional_status=functional_status,
+            data_sources_queried=data_sources,
+            limitations=limitations,
+        )
+
+        return classification
+
     async def _node_recommend(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        """Stage 3: Generate drug recommendations based on classifications.
+
+        Queries CPIC and PharmGKB for pharmacogenomic guidelines relevant to
+        the classified actionable variants.
+        """
         parse_result = node_input["parse_result"]
         classifications = node_input.get("classifications", [])
         warnings = node_input.get("warnings", [])
@@ -315,6 +550,11 @@ class ADKWorkflowRunner:
         return node_input
 
     def _node_literature(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        """Stage 4: Retrieve literature evidence for recommendations.
+
+        Uses the RAG literature service to find relevant citations for
+        the generated drug recommendations.
+        """
         recommendations = node_input.get("recommendations", [])
         provenance = node_input.get("provenance", [])
 
@@ -335,6 +575,11 @@ class ADKWorkflowRunner:
         return node_input
 
     def _node_assemble(self, node_input: dict[str, Any]) -> dict[str, Any]:
+        """Stage 5: Assemble the final ClinicalReport from all pipeline outputs.
+
+        Combines variant summaries, classifications, recommendations, literature
+        evidence, and provenance into a unified ClinicalReport with markdown summary.
+        """
         parse_result = node_input["parse_result"]
         started_at = node_input.get("started_at", time.perf_counter())
         report = ClinicalReport(
