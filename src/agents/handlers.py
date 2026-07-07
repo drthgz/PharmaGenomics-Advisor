@@ -16,6 +16,7 @@ from src.models import (
     Variant,
     VariantClassification,
 )
+from src.mcp_servers_bridge import lookup_clinvar
 from src.pipeline.orchestrator import (
     _egfr_therapeutic_relevance,
     _rule_based_acmg,
@@ -39,6 +40,22 @@ async def brca_handler(msg: AgentMessage) -> AgentMessage:
     try:
         variant = Variant(**msg.payload["variant"])
         classification, confidence = _rule_based_acmg(variant)
+        clinvar = await lookup_clinvar(variant)
+
+        evidence = ["Rule-based assessment from local knowledge base"]
+        data_sources = ["local_rules"]
+        limitations: list[str] = []
+
+        if clinvar.get("status") == "success":
+            data_sources.append("clinvar")
+            for result in clinvar.get("results", [])[:2]:
+                significance = result.get("clinical_significance", "unknown")
+                review = result.get("review_status", "unknown")
+                evidence.append(f"ClinVar: {significance} ({review})")
+        elif clinvar.get("status") == "disabled":
+            limitations.append("ClinVar online lookup disabled")
+        else:
+            limitations.append("ClinVar unavailable or no records found")
 
         result = VariantClassification(
             gene=variant.gene or "BRCA",
@@ -49,9 +66,10 @@ async def brca_handler(msg: AgentMessage) -> AgentMessage:
             alt_allele=variant.alt_allele,
             classification=classification,
             confidence=confidence,
-            evidence_references=["Rule-based assessment from local knowledge base"],
+            evidence_references=evidence,
             therapeutic_relevance=TherapeuticRelevance.UNKNOWN,
-            data_sources_queried=["local_rules"],
+            data_sources_queried=data_sources,
+            limitations=limitations,
         )
 
         return AgentMessage(
@@ -86,6 +104,22 @@ async def egfr_handler(msg: AgentMessage) -> AgentMessage:
         variant = Variant(**msg.payload["variant"])
         classification, confidence = _rule_based_acmg(variant)
         therapeutic_relevance = _egfr_therapeutic_relevance(variant)
+        clinvar = await lookup_clinvar(variant)
+
+        evidence = ["Rule-based assessment from local knowledge base"]
+        data_sources = ["local_rules"]
+        limitations: list[str] = []
+
+        if clinvar.get("status") == "success":
+            data_sources.append("clinvar")
+            for result in clinvar.get("results", [])[:2]:
+                significance = result.get("clinical_significance", "unknown")
+                review = result.get("review_status", "unknown")
+                evidence.append(f"ClinVar: {significance} ({review})")
+        elif clinvar.get("status") == "disabled":
+            limitations.append("ClinVar online lookup disabled")
+        else:
+            limitations.append("ClinVar unavailable or no records found")
 
         result = VariantClassification(
             gene=variant.gene or "EGFR",
@@ -96,9 +130,10 @@ async def egfr_handler(msg: AgentMessage) -> AgentMessage:
             alt_allele=variant.alt_allele,
             classification=classification,
             confidence=confidence,
-            evidence_references=["Rule-based assessment from local knowledge base"],
+            evidence_references=evidence,
             therapeutic_relevance=therapeutic_relevance,
-            data_sources_queried=["local_rules"],
+            data_sources_queried=data_sources,
+            limitations=limitations,
         )
 
         return AgentMessage(
@@ -133,6 +168,22 @@ async def tp53_handler(msg: AgentMessage) -> AgentMessage:
         variant = Variant(**msg.payload["variant"])
         classification, confidence = _rule_based_acmg(variant)
         functional_status = _tp53_functional_status(variant)
+        clinvar = await lookup_clinvar(variant)
+
+        evidence = ["Rule-based assessment from local knowledge base"]
+        data_sources = ["local_rules"]
+        limitations: list[str] = []
+
+        if clinvar.get("status") == "success":
+            data_sources.append("clinvar")
+            for result in clinvar.get("results", [])[:2]:
+                significance = result.get("clinical_significance", "unknown")
+                review = result.get("review_status", "unknown")
+                evidence.append(f"ClinVar: {significance} ({review})")
+        elif clinvar.get("status") == "disabled":
+            limitations.append("ClinVar online lookup disabled")
+        else:
+            limitations.append("ClinVar unavailable or no records found")
 
         result = VariantClassification(
             gene=variant.gene or "TP53",
@@ -143,10 +194,11 @@ async def tp53_handler(msg: AgentMessage) -> AgentMessage:
             alt_allele=variant.alt_allele,
             classification=classification,
             confidence=confidence,
-            evidence_references=["Rule-based assessment from local knowledge base"],
+            evidence_references=evidence,
             functional_status=functional_status,
             therapeutic_relevance=TherapeuticRelevance.UNKNOWN,
-            data_sources_queried=["local_rules"],
+            data_sources_queried=data_sources,
+            limitations=limitations,
         )
 
         return AgentMessage(

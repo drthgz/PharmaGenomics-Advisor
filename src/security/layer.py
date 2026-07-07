@@ -92,6 +92,12 @@ class SecurityLayer:
         # attempts and oversized payloads before they reach downstream logic.
         result = self.input_validator.validate(input_data)
         if not result.is_valid:
+            self.audit_logger.log(
+                agent_name="security_layer",
+                action_type="validate_input",
+                input_data=input_data,
+                output_data=f"rejected:{result.rejected_reason}",
+            )
             # Early return prevents wasted PHI/rate-limit processing and
             # ensures the audit trail captures the first failing check only.
             return result
@@ -101,6 +107,12 @@ class SecurityLayer:
         # disguised as PHI don't bypass the injection filter.
         result = self.phi_detector.check(input_data)
         if not result.is_valid:
+            self.audit_logger.log(
+                agent_name="security_layer",
+                action_type="detect_phi",
+                input_data=input_data,
+                output_data=f"rejected:{result.rejected_reason}",
+            )
             return result
 
         # 3. Rate limiting — checked last because it's the only stateful
@@ -108,6 +120,19 @@ class SecurityLayer:
         # already-invalid inputs avoids polluting the rate-limit window.
         result = self.rate_limiter.check(session_id)
         if not result.is_valid:
+            self.audit_logger.log(
+                agent_name="security_layer",
+                action_type="rate_limit",
+                input_data=input_data,
+                output_data=f"rejected:{result.rejected_reason}",
+            )
             return result
+
+        self.audit_logger.log(
+            agent_name="security_layer",
+            action_type="validate_pass",
+            input_data=input_data,
+            output_data="accepted",
+        )
 
         return ValidationResult(is_valid=True)

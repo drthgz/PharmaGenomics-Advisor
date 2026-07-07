@@ -176,3 +176,33 @@ class TestPlaceholderNarrativeFormat:
         assert "EGFR" in result
         assert "Likely Pathogenic" in result
         assert "LLM-generated narrative unavailable" in result
+
+
+class TestTemplatePlaceholderSanitization:
+    """Test that unresolved template placeholders are never emitted in reports."""
+
+    def test_unresolved_bracket_placeholder_triggers_deterministic_fallback(self):
+        classification = _make_valid_classification(
+            gene="BRCA1",
+            classification=ACMGClassification.LIKELY_PATHOGENIC,
+            therapeutic_relevance=TherapeuticRelevance.UNKNOWN,
+        )
+
+        with patch("src.inference.ollama_client.ollama.Client") as mock_client_cls:
+            mock_instance = MagicMock()
+            mock_instance.chat.return_value = {
+                "message": {
+                    "content": (
+                        "The BRCA1 gene variant [Insert Variant Allele and Reference Allele] "
+                        "is classified as Likely Pathogenic."
+                    )
+                }
+            }
+            mock_client_cls.return_value = mock_instance
+
+            client = LLMInferenceClient(model="medgemma")
+            result = client.generate_narrative(classification)
+
+        assert "[Insert Variant Allele and Reference Allele]" not in result
+        assert "BRCA1" in result
+        assert "Likely Pathogenic" in result

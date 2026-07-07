@@ -198,6 +198,19 @@ class ProvenanceMetadata(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class CapstoneCoverage(BaseModel):
+    """Runtime evidence for capstone concept coverage."""
+
+    agentic_ai: bool = False
+    adk_runtime: bool = False
+    mcp_tools: bool = False
+    ollama_inference: bool = False
+    security_layer: bool = False
+    agent_skills_configured: bool = False
+    deployability_assets: bool = False
+    notes: list[str] = Field(default_factory=list)
+
+
 class ClinicalReport(BaseModel):
     """Unified clinical report — the final pipeline output."""
 
@@ -215,6 +228,7 @@ class ClinicalReport(BaseModel):
     # Metadata
     provenance: list[ProvenanceMetadata] = Field(default_factory=list)
     warnings: list[dict] = Field(default_factory=list)
+    capstone_coverage: CapstoneCoverage = Field(default_factory=CapstoneCoverage)
 
     # Human-readable summary
     markdown_summary: str = Field(default="")

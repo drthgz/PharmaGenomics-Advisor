@@ -29,6 +29,7 @@ import src.pipeline.orchestrator as orchestrator_module
 from src.pipeline.orchestrator import (
     ACTIONABLE_CLASSES,
     PipelineOrchestrator,
+    _build_capstone_coverage,
     _egfr_therapeutic_relevance,
     _rule_based_acmg,
     _to_action,
@@ -306,6 +307,7 @@ class ADKWorkflowRunner:
         agent_classifications = await self._classify_with_supervisor(
             parse_result.variants, warnings
         )
+        node_input["used_supervisor_path"] = agent_classifications is not None
 
         if agent_classifications is not None:
             # Successfully used SupervisorAgent — map results back
@@ -505,6 +507,7 @@ class ADKWorkflowRunner:
         classifications = node_input.get("classifications", [])
         warnings = node_input.get("warnings", [])
         recommendations = []
+        mcp_sources_used = set(node_input.get("mcp_sources_used", []))
 
         classified_by_key = {
             (c.chromosome, c.position, c.ref_allele, c.alt_allele): c
@@ -522,6 +525,12 @@ class ADKWorkflowRunner:
             variant_start_count = len(recommendations)
             cpic_result = await orchestrator_module.lookup_cpic_guidelines(variant.gene or "")
             pharmgkb_result = await orchestrator_module.lookup_pharmgkb_annotations(variant.gene or "")
+            cpic_source = cpic_result.get("source")
+            pharmgkb_source = pharmgkb_result.get("source")
+            if cpic_source:
+                mcp_sources_used.add(f"cpic:{cpic_source}")
+            if pharmgkb_source:
+                mcp_sources_used.add(f"pharmgkb:{pharmgkb_source}")
 
             seen_keys: set[tuple[str, str]] = set()
 
@@ -576,6 +585,7 @@ class ADKWorkflowRunner:
 
         node_input["warnings"] = warnings
         node_input["recommendations"] = recommendations
+        node_input["mcp_sources_used"] = sorted(mcp_sources_used)
         return node_input
 
     def _node_literature(self, node_input: dict[str, Any]) -> dict[str, Any]:
@@ -611,14 +621,25 @@ class ADKWorkflowRunner:
         """
         parse_result = node_input["parse_result"]
         started_at = node_input.get("started_at", time.perf_counter())
+        classifications = node_input.get("classifications", [])
+        mcp_sources_used = set(node_input.get("mcp_sources_used", []))
+        for classification in classifications:
+            mcp_sources_used.update(classification.data_sources_queried)
+
         report = ClinicalReport(
             total_execution_time_seconds=time.perf_counter() - started_at,
             variant_summary=parse_result.variants,
-            classifications=node_input.get("classifications", []),
+            classifications=classifications,
             drug_recommendations=node_input.get("recommendations", []),
             literature_evidence=node_input.get("literature", []),
             provenance=node_input.get("provenance", []),
             warnings=node_input.get("warnings", []),
+            capstone_coverage=_build_capstone_coverage(
+                runtime="adk",
+                used_supervisor_path=bool(node_input.get("used_supervisor_path", False)),
+                mcp_sources_used=mcp_sources_used,
+                has_narratives=any(bool(c.clinical_narrative) for c in classifications),
+            ),
         )
         report.markdown_summary = render_markdown_report(report)
         return {"report": report}

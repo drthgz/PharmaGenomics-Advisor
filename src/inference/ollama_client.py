@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 import ollama
 
@@ -82,9 +83,10 @@ class LLMInferenceClient:
                 )
                 return self._placeholder_narrative(classification)
 
+            cleaned = self._sanitize_narrative(content, classification)
             # Hard cap at 2000 chars to keep downstream report rendering predictable
             # and prevent a runaway LLM from bloating the clinical report
-            return content[:2000]
+            return cleaned[:2000]
 
         except Exception as exc:
             # Catch-all ensures the pipeline never crashes due to LLM unavailability;
@@ -96,6 +98,71 @@ class LLMInferenceClient:
                 str(exc),
             )
             return self._placeholder_narrative(classification)
+
+    def _sanitize_narrative(self, narrative: str, classification: VariantClassification) -> str:
+        """Normalize LLM output and replace unresolved template content.
+
+        Some model responses contain bracketed placeholders (e.g.,
+        "[Insert Variant Allele]") or mismatched variant references copied from
+        generic templates. Those should never appear in clinical reports.
+        """
+        text = narrative.strip()
+        if not text:
+            return self._placeholder_narrative(classification)
+
+        unresolved_placeholder_patterns = [
+            r"\[[^\]]*(insert|variant|allele|gene|identifier|fill|placeholder)[^\]]*\]",
+            r"<[^>]*(insert|variant|allele|gene|identifier|placeholder)[^>]*>",
+            r"\b(\[variant identifier\]|\[insert [^\]]+\])\b",
+        ]
+        for pattern in unresolved_placeholder_patterns:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                logger.warning(
+                    "LLM narrative contained unresolved placeholders for %s; using deterministic fallback",
+                    classification.gene,
+                )
+                return self._deterministic_narrative(classification)
+
+        # If the model omits the target gene entirely, prefer a deterministic
+        # narrative to avoid reporting likely cross-variant hallucinations.
+        if classification.gene and classification.gene.upper() not in text.upper():
+            logger.warning(
+                "LLM narrative omitted target gene for %s; using deterministic fallback",
+                classification.gene,
+            )
+            return self._deterministic_narrative(classification)
+
+        return text
+
+    def _deterministic_narrative(self, classification: VariantClassification) -> str:
+        """Generate a deterministic clinical narrative from structured fields."""
+        gene = classification.gene or "Unknown"
+        label = classification.classification.value if classification.classification else "Unknown"
+        confidence = classification.confidence.value if classification.confidence else "Unknown"
+        variant = (
+            f"{classification.chromosome}:{classification.position} "
+            f"{classification.ref_allele}>{classification.alt_allele}"
+        )
+
+        therapeutic_text = "Therapeutic relevance is not established for this variant."
+        if classification.therapeutic_relevance:
+            therapeutic_text = (
+                f"Therapeutic relevance is annotated as "
+                f"{classification.therapeutic_relevance.value}."
+            )
+
+        evidence_text = "Supporting evidence is available from local rule-based assessment."
+        if classification.evidence_references:
+            top = "; ".join(classification.evidence_references[:2])
+            evidence_text = f"Supporting evidence includes: {top}."
+
+        return (
+            f"The {gene} variant ({variant}) is classified as {label} "
+            f"with {confidence} confidence. "
+            f"This interpretation should be reviewed alongside patient history, "
+            f"tumor context, and current guidelines. "
+            f"{therapeutic_text} {evidence_text}"
+        )
 
     def _has_required_fields(self, classification: VariantClassification) -> bool:
         """Check that all four required fields are present and non-empty.

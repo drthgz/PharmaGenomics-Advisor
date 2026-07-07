@@ -18,10 +18,35 @@ _TIMEOUT_SECONDS = 15.0
 async def lookup_clinvar(variant: Variant) -> dict:
     """Lookup ClinVar evidence using NCBI E-utilities."""
     if os.getenv("ENABLE_CLINVAR_ONLINE", "false").lower() != "true":
-        return {"status": "disabled", "error": "ClinVar online lookup disabled", "results": []}
+        return {
+            "status": "disabled",
+            "error": "ClinVar online lookup disabled",
+            "results": [],
+            "source": "bridge_stub",
+        }
+
+    # Prefer the local MCP tool implementation when available so runtime behavior
+    # aligns with the documented MCP architecture without requiring a separate process.
+    try:
+        from mcp_servers.clinvar_server import clinvar_variant_lookup
+
+        result = await clinvar_variant_lookup(
+            gene=variant.gene or "",
+            chromosome=variant.chromosome,
+            position=variant.position,
+            ref=variant.ref_allele,
+            alt=variant.alt_allele,
+        )
+        if isinstance(result, dict):
+            result.setdefault("source", "mcp_tool")
+            return result
+    except Exception:
+        # Fall back to direct lightweight implementation when MCP dependencies
+        # are unavailable in the runtime image.
+        pass
 
     if not variant.gene:
-        return {"status": "error", "error": "Missing gene", "results": []}
+        return {"status": "error", "error": "Missing gene", "results": [], "source": "bridge_stub"}
 
     chrom = variant.chromosome.replace("chr", "").replace("Chr", "")
     search_term = f"{variant.gene}[gene] AND {chrom}[chr]"
@@ -41,6 +66,7 @@ async def lookup_clinvar(variant: Variant) -> dict:
                     "gene": variant.gene,
                     "position": variant.position,
                     "results": [],
+                    "source": "bridge_http",
                 }
 
             summary_resp = await client.get(
@@ -70,13 +96,24 @@ async def lookup_clinvar(variant: Variant) -> dict:
                 "gene": variant.gene,
                 "position": variant.position,
                 "results": results,
+                "source": "bridge_http",
             }
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "results": []}
+        return {"status": "error", "error": str(exc), "results": [], "source": "bridge_http"}
 
 
 async def lookup_cpic_guidelines(gene: str) -> dict:
     """Lookup CPIC recommendations from local seeded data."""
+    try:
+        from mcp_servers.cpic_server import cpic_gene_drug_guidelines
+
+        result = await cpic_gene_drug_guidelines(gene=gene)
+        if isinstance(result, dict):
+            result.setdefault("source", "mcp_tool")
+            return result
+    except Exception:
+        pass
+
     gene_upper = gene.strip().upper()
     data = [
         {
@@ -114,17 +151,33 @@ async def lookup_cpic_guidelines(gene: str) -> dict:
     ]
     results = [item for item in data if item["gene"] == gene_upper]
     if not results:
-        return {"status": "no records found", "gene": gene_upper, "results": []}
+        return {
+            "status": "no records found",
+            "gene": gene_upper,
+            "results": [],
+            "source": "bridge_seed",
+        }
     return {
         "status": "success",
         "gene": gene_upper,
         "guideline_count": len(results),
         "results": results,
+        "source": "bridge_seed",
     }
 
 
 async def lookup_pharmgkb_annotations(gene: str) -> dict:
     """Lookup PharmGKB annotations from local seeded data."""
+    try:
+        from mcp_servers.pharmgkb_server import pharmgkb_annotations
+
+        result = await pharmgkb_annotations(gene=gene)
+        if isinstance(result, dict):
+            result.setdefault("source", "mcp_tool")
+            return result
+    except Exception:
+        pass
+
     gene_upper = gene.strip().upper()
     data = [
         {
@@ -148,10 +201,16 @@ async def lookup_pharmgkb_annotations(gene: str) -> dict:
     ]
     results = [item for item in data if item["gene"] == gene_upper]
     if not results:
-        return {"status": "no records found", "gene": gene_upper, "results": []}
+        return {
+            "status": "no records found",
+            "gene": gene_upper,
+            "results": [],
+            "source": "bridge_seed",
+        }
     return {
         "status": "success",
         "gene": gene_upper,
         "annotation_count": len(results),
         "results": results,
+        "source": "bridge_seed",
     }
