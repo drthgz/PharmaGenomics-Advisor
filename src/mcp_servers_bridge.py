@@ -111,6 +111,25 @@ async def lookup_cpic_guidelines(gene: str) -> dict:
             "url": "https://cpicpgx.org/guidelines/",
             "contraindications": ["T790M resistance mutation"],
         },
+        {
+            "gene": "TP53",
+            "drug": "Cisplatin",
+            "recommendation": "alternative therapy",
+            "cpic_level": "B",
+            "url": "https://cpicpgx.org/guidelines/",
+            "contraindications": [
+                "Gain-of-function hotspot mutations (e.g., R248W, R273H) may confer "
+                "cisplatin resistance — verify functional status before prescribing"
+            ],
+        },
+        {
+            "gene": "TP53",
+            "drug": "Etoposide",
+            "recommendation": "alternative therapy",
+            "cpic_level": "B",
+            "url": "https://cpicpgx.org/guidelines/",
+            "contraindications": [],
+        },
     ]
     results = [item for item in data if item["gene"] == gene_upper]
     if not results:

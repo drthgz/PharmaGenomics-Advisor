@@ -116,32 +116,67 @@ class LLMInferenceClient:
             return False
         return True
 
+    def _variant_detail_string(self, classification: VariantClassification) -> str:
+        """Return a human-readable variant string from HGVS description or chrom:pos ref>alt.
+
+        Used by both _build_prompt and _placeholder_narrative to avoid duplicating
+        the same fallback construction logic in two places.
+        """
+        return (
+            classification.variant_description
+            or f"{classification.chromosome}:{classification.position} "
+            f"{classification.ref_allele}>{classification.alt_allele}"
+        )
+
     def _build_prompt(self, classification: VariantClassification) -> str:
-        """Construct the LLM prompt including gene, classification, evidence, and relevance."""
+        """Construct the LLM prompt including gene, variant details, classification, evidence, and relevance."""
         # Join evidence list into a single semicolon-delimited string so the LLM
         # sees all citations in one block rather than a Python list repr
         evidence = "; ".join(classification.evidence_references)
+        variant_detail = self._variant_detail_string(classification)
+        # Include explicit ref/alt allele values so the model never needs to
+        # invent or template-fill allele placeholders in its response
+        therapeutic_value = (
+            classification.therapeutic_relevance.value
+            if classification.therapeutic_relevance
+            else "unknown"
+        )
         # Structured prompt with explicit role-setting ("You are a clinical genomics expert")
         # steers the model toward domain-appropriate language and avoids generic summaries
         return (
-            "You are a clinical genomics expert. Generate a concise clinical interpretation "
-            "paragraph for the following classified genetic variant. Include clinical significance, "
-            "potential impact on patient care, and relevant therapeutic considerations.\n\n"
+            "You are a clinical genomics expert. Generate a concise 2-3 sentence clinical "
+            "interpretation for the following classified genetic variant. Include the clinical "
+            "significance, potential impact on patient care, and relevant therapeutic "
+            "considerations. Use only the exact values provided below — do NOT use placeholder "
+            "text, brackets, or template variables in your response.\n\n"
             f"Gene: {classification.gene}\n"
+            f"Variant: {variant_detail}\n"
+            f"Reference Allele: {classification.ref_allele}\n"
+            f"Alternate Allele: {classification.alt_allele}\n"
             f"ACMG Classification: {classification.classification.value}\n"
             f"Evidence References: {evidence}\n"
-            f"Therapeutic Relevance: {classification.therapeutic_relevance.value}\n\n"
-            "Provide a clear, professional clinical narrative suitable for a genomics report."
+            f"Therapeutic Relevance: {therapeutic_value}\n\n"
+            "Provide a clear, professional clinical narrative suitable for a genomics report. "
+            "Do not include any placeholder text such as '[Insert ...]' or '<...>'."
         )
 
     def _placeholder_narrative(self, classification: VariantClassification) -> str:
-        """Return fallback text when LLM inference fails."""
-        # Fallback preserves gene + classification so downstream report sections
-        # still render meaningful headers even without a full narrative
+        """Return fallback text when LLM inference fails.
+
+        Includes gene, variant description, and ACMG classification so that
+        downstream report sections still render meaningful content even when
+        the Ollama server is unavailable or returns an empty response.
+        """
         gene = classification.gene or "Unknown"
         acmg_value = (
             classification.classification.value
             if classification.classification
             else "Unknown"
         )
-        return f"{gene} - {acmg_value} - LLM-generated narrative unavailable"
+        # Include variant description so reviewers have context without the LLM narrative
+        variant_desc = self._variant_detail_string(classification)
+        return (
+            f"The {gene} variant {variant_desc} is classified as {acmg_value}. "
+            "LLM-generated clinical narrative is unavailable (Ollama not reachable). "
+            "Manual clinical review is required before acting on this classification."
+        )

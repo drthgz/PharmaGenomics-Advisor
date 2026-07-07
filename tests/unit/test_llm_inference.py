@@ -10,8 +10,6 @@ import logging
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.inference.ollama_client import LLMInferenceClient
 from src.models import (
     ACMGClassification,
@@ -57,7 +55,9 @@ class TestFallbackOnConnectionError:
             with caplog.at_level(logging.WARNING):
                 result = client.generate_narrative(classification)
 
-        assert result == "BRCA1 - Pathogenic - LLM-generated narrative unavailable"
+        assert "BRCA1" in result
+        assert "Pathogenic" in result
+        assert "LLM-generated clinical narrative is unavailable" in result
         assert any("WARNING" == record.levelname for record in caplog.records)
 
 
@@ -78,7 +78,9 @@ class TestFallbackOnHTTPError:
             with caplog.at_level(logging.WARNING):
                 result = client.generate_narrative(classification)
 
-        assert result == "BRCA1 - Pathogenic - LLM-generated narrative unavailable"
+        assert "BRCA1" in result
+        assert "Pathogenic" in result
+        assert "LLM-generated clinical narrative is unavailable" in result
         assert any("WARNING" == record.levelname for record in caplog.records)
 
 
@@ -99,7 +101,9 @@ class TestFallbackOnTimeout:
             with caplog.at_level(logging.WARNING):
                 result = client.generate_narrative(classification)
 
-        assert result == "BRCA1 - Pathogenic - LLM-generated narrative unavailable"
+        assert "BRCA1" in result
+        assert "Pathogenic" in result
+        assert "LLM-generated clinical narrative is unavailable" in result
         assert any("WARNING" == record.levelname for record in caplog.records)
 
 
@@ -120,7 +124,9 @@ class TestFallbackOnEmptyResponse:
             with caplog.at_level(logging.WARNING):
                 result = client.generate_narrative(classification)
 
-        assert result == "BRCA1 - Pathogenic - LLM-generated narrative unavailable"
+        assert "BRCA1" in result
+        assert "Pathogenic" in result
+        assert "LLM-generated clinical narrative is unavailable" in result
         assert any("WARNING" == record.levelname for record in caplog.records)
 
 
@@ -175,4 +181,4 @@ class TestPlaceholderNarrativeFormat:
 
         assert "EGFR" in result
         assert "Likely Pathogenic" in result
-        assert "LLM-generated narrative unavailable" in result
+        assert "LLM-generated clinical narrative is unavailable" in result
