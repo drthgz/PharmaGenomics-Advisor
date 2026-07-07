@@ -69,9 +69,9 @@ class ADKWorkflowRunner:
         # Import types for user message construction
         try:
             from google.genai import types
-        except ImportError as exc:
+        except (ImportError, AttributeError) as exc:
             raise ADKNotAvailableError(
-                "Missing ADK symbol: google.genai.types"
+                "Missing ADK symbol: google.genai.types. The installed google-adk version may be incompatible."
             ) from exc
 
         user_message = types.UserContent(parts=[types.Part.from_text(text="run pipeline")])
@@ -115,37 +115,54 @@ class ADKWorkflowRunner:
         # Try to import the base ADK module
         try:
             adk_module = importlib.import_module("google.adk")
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise ADKNotAvailableError(
+                "ADK runtime not available. Install with: pip install 'google-adk>=2.0.0'"
+            ) from exc
         except Exception as exc:
             raise ADKNotAvailableError(
-                "Missing ADK symbol: google.adk (package not installed). "
-                "Install with: python3 -m pip install 'google-adk>=2.0.0'"
+                "ADK runtime not available. Install with: pip install 'google-adk>=2.0.0'"
             ) from exc
 
         # Validate Workflow symbol
         if not hasattr(adk_module, "Workflow"):
-            raise ADKNotAvailableError("Missing ADK symbol: Workflow")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: Workflow. The installed google-adk version may be incompatible."
+            )
 
         # Validate workflow sub-module and START
         workflow_submodule = getattr(adk_module, "workflow", None)
         if workflow_submodule is None:
-            raise ADKNotAvailableError("Missing ADK symbol: workflow")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: workflow. The installed google-adk version may be incompatible."
+            )
         if not hasattr(workflow_submodule, "START"):
-            raise ADKNotAvailableError("Missing ADK symbol: workflow.START")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: workflow.START. The installed google-adk version may be incompatible."
+            )
 
         # Validate Runner symbol
         if not hasattr(adk_module, "Runner"):
-            raise ADKNotAvailableError("Missing ADK symbol: Runner")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: Runner. The installed google-adk version may be incompatible."
+            )
 
         # Validate InMemorySessionService from google.adk.sessions
         try:
             sessions_module = importlib.import_module("google.adk.sessions")
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: InMemorySessionService. The installed google-adk version may be incompatible."
+            ) from exc
         except Exception as exc:
             raise ADKNotAvailableError(
-                "Missing ADK symbol: InMemorySessionService (google.adk.sessions not importable)"
+                "Missing ADK symbol: InMemorySessionService. The installed google-adk version may be incompatible."
             ) from exc
 
         if not hasattr(sessions_module, "InMemorySessionService"):
-            raise ADKNotAvailableError("Missing ADK symbol: InMemorySessionService")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: InMemorySessionService. The installed google-adk version may be incompatible."
+            )
 
         return adk_module
 
@@ -166,9 +183,13 @@ class ADKWorkflowRunner:
         start = getattr(workflow_module, "START", None) if workflow_module else None
 
         if Workflow is None:
-            raise ADKNotAvailableError("Missing ADK symbol: Workflow")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: Workflow. The installed google-adk version may be incompatible."
+            )
         if start is None:
-            raise ADKNotAvailableError("Missing ADK symbol: workflow.START")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: workflow.START. The installed google-adk version may be incompatible."
+            )
 
         # Register all five pipeline stages as distinct callable node functions
         validate_node = self._node_validate_parse
@@ -206,18 +227,26 @@ class ADKWorkflowRunner:
         """
         Runner = getattr(adk_module, "Runner", None)
         if Runner is None:
-            raise ADKNotAvailableError("Missing ADK symbol: Runner")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: Runner. The installed google-adk version may be incompatible."
+            )
 
         try:
             sessions_module = importlib.import_module("google.adk.sessions")
+        except (ImportError, ModuleNotFoundError) as exc:
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: InMemorySessionService. The installed google-adk version may be incompatible."
+            ) from exc
         except Exception as exc:
             raise ADKNotAvailableError(
-                "Missing ADK symbol: InMemorySessionService (google.adk.sessions not importable)"
+                "Missing ADK symbol: InMemorySessionService. The installed google-adk version may be incompatible."
             ) from exc
 
         InMemorySessionService = getattr(sessions_module, "InMemorySessionService", None)
         if InMemorySessionService is None:
-            raise ADKNotAvailableError("Missing ADK symbol: InMemorySessionService")
+            raise ADKNotAvailableError(
+                "Missing ADK symbol: InMemorySessionService. The installed google-adk version may be incompatible."
+            )
 
         return Runner(
             app_name="pharmagenomics-advisor",

@@ -29,9 +29,12 @@ class LLMInferenceClient:
         """
         if model is None:
             env_model = os.environ.get("OLLAMA_MODEL")
+            # Prefer env var so Docker builds can inject model at runtime without code changes
             model = env_model if env_model else "medgemma"
         self.model = model
         self.timeout = timeout
+        # Instantiate a dedicated client rather than using the module-level default
+        # so each client instance can carry its own timeout and host configuration
         self._client = ollama.Client(timeout=timeout)
 
     def generate_narrative(self, classification: VariantClassification) -> str:
@@ -52,21 +55,25 @@ class LLMInferenceClient:
             - Truncates response to 2000 characters
             - On any error: logs WARNING and returns placeholder
         """
-        # Validate required fields before calling Ollama
+        # Validate early to avoid a costly network round-trip when input is incomplete
         if not self._has_required_fields(classification):
             return ""
 
         try:
             prompt = self._build_prompt(classification)
+            # Use single-message chat (no conversation history) because each narrative
+            # is independent — no multi-turn context is needed for clinical summaries
             response = self._client.chat(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            # Extract content from response
+            # Ollama's response schema nests content under "message.content";
+            # defensive .get() prevents KeyError if the schema changes between versions
             content = response.get("message", {}).get("content", "")
 
-            # Handle empty/whitespace-only response
+            # Treat whitespace-only responses the same as empty — they provide no
+            # clinical value and would produce a blank section in the final report
             if not content or not content.strip():
                 logger.warning(
                     "Ollama returned empty response for variant %s (%s)",
@@ -75,10 +82,13 @@ class LLMInferenceClient:
                 )
                 return self._placeholder_narrative(classification)
 
-            # Truncate to 2000 characters maximum
+            # Hard cap at 2000 chars to keep downstream report rendering predictable
+            # and prevent a runaway LLM from bloating the clinical report
             return content[:2000]
 
         except Exception as exc:
+            # Catch-all ensures the pipeline never crashes due to LLM unavailability;
+            # a degraded narrative is acceptable, but a pipeline abort is not
             logger.warning(
                 "LLM inference failed for variant %s (%s): %s",
                 classification.gene,
@@ -92,10 +102,14 @@ class LLMInferenceClient:
 
         Required fields: gene, classification, evidence_references, therapeutic_relevance.
         """
+        # Each field maps to a distinct prompt section; if any is absent the LLM
+        # would hallucinate missing context, producing unreliable clinical text
         if not classification.gene:
             return False
         if not classification.classification:
             return False
+        # Evidence list drives the "supporting literature" portion of the prompt —
+        # without it the narrative would lack citations and lose clinical credibility
         if not classification.evidence_references:
             return False
         if not classification.therapeutic_relevance:
@@ -104,7 +118,11 @@ class LLMInferenceClient:
 
     def _build_prompt(self, classification: VariantClassification) -> str:
         """Construct the LLM prompt including gene, classification, evidence, and relevance."""
+        # Join evidence list into a single semicolon-delimited string so the LLM
+        # sees all citations in one block rather than a Python list repr
         evidence = "; ".join(classification.evidence_references)
+        # Structured prompt with explicit role-setting ("You are a clinical genomics expert")
+        # steers the model toward domain-appropriate language and avoids generic summaries
         return (
             "You are a clinical genomics expert. Generate a concise clinical interpretation "
             "paragraph for the following classified genetic variant. Include clinical significance, "
@@ -118,6 +136,8 @@ class LLMInferenceClient:
 
     def _placeholder_narrative(self, classification: VariantClassification) -> str:
         """Return fallback text when LLM inference fails."""
+        # Fallback preserves gene + classification so downstream report sections
+        # still render meaningful headers even without a full narrative
         gene = classification.gene or "Unknown"
         acmg_value = (
             classification.classification.value

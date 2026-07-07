@@ -32,10 +32,23 @@ RUN pip install --no-cache-dir \
     "ollama>=0.4.0"
 
 # Pull the specified Ollama model during build
-RUN ollama serve & \
-    sleep 5 && \
+RUN set -e && \
+    ollama serve & \
+    OLLAMA_PID=$! && \
+    echo "Waiting for Ollama to start (PID: $OLLAMA_PID)..." && \
+    for i in $(seq 1 30); do \
+        if curl -sf http://localhost:11434 > /dev/null 2>&1; then \
+            break; \
+        fi; \
+        if [ "$i" -eq 30 ]; then \
+            echo "ERROR: Ollama failed to start within 30 seconds" && exit 1; \
+        fi; \
+        sleep 1; \
+    done && \
+    echo "Ollama ready. Pulling model: ${OLLAMA_MODEL}" && \
     ollama pull ${OLLAMA_MODEL} && \
-    kill $(cat /tmp/ollama.pid 2>/dev/null) 2>/dev/null || true
+    kill -SIGTERM $OLLAMA_PID && \
+    wait $OLLAMA_PID || true
 
 # Copy project source and data files
 COPY src/ src/

@@ -41,7 +41,7 @@ class TestMissingADKModule:
             with pytest.raises(ADKNotAvailableError) as exc_info:
                 runner._import_adk()
 
-        assert "google.adk" in str(exc_info.value)
+        assert "ADK runtime not available" in str(exc_info.value)
 
 
 class TestMissingADKSymbols:

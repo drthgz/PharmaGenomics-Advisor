@@ -60,15 +60,18 @@ flowchart LR
         VCF[VCF Input] --> PARSE[Parse]
         PARSE --> CLASSIFY[Classify]
 
+        CLASSIFY --> SUPERVISOR[SupervisorAgent]:::agent
+
         subgraph SPECIALISTS[Parallel Specialist Agents]
                 BRCA[BRCA Agent]
                 EGFR[EGFR Agent]
                 TP53[TP53 Agent]
         end
 
-        CLASSIFY --> BRCA
-        CLASSIFY --> EGFR
-        CLASSIFY --> TP53
+        SUPERVISOR -->|routes via| MSGBUS[MessageBus]:::agent
+        MSGBUS --> BRCA
+        MSGBUS --> EGFR
+        MSGBUS --> TP53
 
         BRCA --> CLINVAR[ClinVar MCP]
         EGFR --> CLINVAR
@@ -83,15 +86,62 @@ flowchart LR
         DRUG --> LIT[Literature]
         LIT --> REPORT[Clinical Report]
 
+        LLMCLIENT[LLMInferenceClient]:::infra
         OLLAMA[Ollama Local\nMedGemma / Gemma 4\nNo API Keys]:::infra
-        BRCA -.inference.-> OLLAMA
-        EGFR -.inference.-> OLLAMA
-        TP53 -.inference.-> OLLAMA
-        DRUG -.inference.-> OLLAMA
-        LIT -.inference.-> OLLAMA
+        LLMCLIENT --> OLLAMA
+        BRCA -.inference.-> LLMCLIENT
+        EGFR -.inference.-> LLMCLIENT
+        TP53 -.inference.-> LLMCLIENT
+        DRUG -.inference.-> LLMCLIENT
+        LIT -.inference.-> LLMCLIENT
 
         classDef infra fill:#f4f4f4,stroke:#666,stroke-width:1px;
+        classDef agent fill:#e6f3ff,stroke:#3399ff,stroke-width:2px;
 ```
+
+---
+
+## LLM Inference Client
+
+The module `src/inference/ollama_client.py` provides the `LLMInferenceClient` class, which calls the local Ollama server to generate clinical narrative paragraphs for classified genetic variants. Each variant's gene, ACMG classification, evidence references, and therapeutic relevance are assembled into a structured prompt sent via `ollama.chat()`.
+
+**Timeout:** Each request uses a 30-second HTTP timeout (configurable at init). This prevents the pipeline from stalling if Ollama is slow or unresponsive.
+
+**Fallback:** On any failure — network error, timeout, empty response, or unexpected exception — the client logs a warning and returns a placeholder narrative (`"<Gene> - <Classification> - LLM-generated narrative unavailable"`) so the pipeline always completes without crashing.
+
+---
+
+## Multi-Agent Architecture
+
+The system uses a **message-passing architecture** where a central supervisor delegates work to gene-specific specialist agents:
+
+- **SupervisorAgent** (`src/agents/supervisor.py`) — receives variant analysis requests, routes each variant to the appropriate specialist (BRCA, EGFR, TP53) via a gene→agent routing map, and aggregates results. Falls back to rule-based classification if a specialist times out or errors.
+
+- **MessageBus** (`src/agents/message_bus.py`) — async in-process message router. Agents register handlers by name; the bus dispatches `AgentMessage` payloads to the named recipient with configurable timeouts. Supports concurrent fan-out via `dispatch_concurrent` so specialists run in parallel.
+
+- **AgentMessage** (Pydantic model in `src/models.py`) — the structured payload for all agent-to-agent communication. Fields:
+  - `message_type` — enum indicating request/response/error
+  - `sender` / `recipient` — agent names for routing
+  - `payload` — dict carrying variant data or classification results
+  - `timestamp` — UTC datetime for audit logging
+
+Communication flow: SupervisorAgent constructs `AgentMessage` objects → MessageBus dispatches to specialists concurrently → specialists return classification responses → SupervisorAgent aggregates and enriches with LLM narratives.
+
+---
+
+## Property-Based Testing
+
+The project uses the [Hypothesis](https://hypothesis.readthedocs.io/) library for property-based testing, complementing traditional unit tests with randomized input exploration.
+
+All property tests live in the `tests/properties/` directory and cover:
+- Agent routing correctness for arbitrary gene/variant combinations
+- LLM inference client behavior across valid and invalid classifications
+- Clinical report rendering for any well-formed `ClinicalReport` instance
+- VCF parse/render roundtrip fidelity
+
+Each property runs with a minimum of **100 examples** per invocation (configured via Hypothesis settings), ensuring broad coverage of edge cases that hand-written examples would miss.
+
+Run property tests with: `pytest tests/properties/ -v`
 
 ---
 
@@ -115,10 +165,13 @@ flowchart LR
 | Concept | Implementation |
 |---------|---------------|
 | **Multi-Agent System (ADK)** | Supervisor + 5 specialized agents with graph workflow |
+| **Agent Message-Passing** | MessageBus dispatches structured `AgentMessage` payloads between SupervisorAgent and specialists |
+| **LLM Inference Integration** | `LLMInferenceClient` generates clinical narratives via local Ollama (MedGemma / Gemma 4) |
 | **MCP Servers** | ClinVar, CPIC, PharmGKB tool endpoints |
 | **Security Features** | PHI detection, injection prevention, audit logging |
+| **Property-Based Testing** | Hypothesis library with 100+ examples per property (`tests/properties/`) |
 | **Agent Skills (Agents CLI)** | Project structure, testing, lifecycle management |
-| **Deployability** | Docker, setup scripts, zero-dependency demo |
+| **Deployability** | Docker, docker-compose, setup scripts, zero-dependency demo |
 
 ---
 

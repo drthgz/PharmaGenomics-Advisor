@@ -25,6 +25,8 @@ class MessageBus:
     """
 
     def __init__(self) -> None:
+        # Use a dict for O(1) handler lookup by agent name — critical for low-latency
+        # dispatch when the supervisor fans out to multiple specialists concurrently.
         self._handlers: dict[str, Callable[[AgentMessage], Awaitable[AgentMessage]]] = {}
 
     def register_agent(
@@ -36,6 +38,8 @@ class MessageBus:
             name: Unique agent name used as the message recipient field.
             handler: Async callable that receives an AgentMessage and returns one.
         """
+        # Overwrite-on-duplicate is intentional: allows hot-swapping agent handlers
+        # during testing or dynamic reconfiguration without needing an unregister step.
         self._handlers[name] = handler
         logger.info("Registered agent: %s", name)
 
@@ -61,9 +65,12 @@ class MessageBus:
             message.timestamp.isoformat(),
         )
 
-        # Check if recipient is registered
+        # Resolve the recipient's handler first — fail fast before doing any async work.
+        # This keeps the error path synchronous and avoids unnecessary task scheduling.
         handler = self._handlers.get(message.recipient)
         if handler is None:
+            # Return an ERROR message back to the sender rather than raising an exception,
+            # so callers can handle missing recipients uniformly without try/except logic.
             logger.warning(
                 "Unknown recipient: %s (sender=%s, message_type=%s)",
                 message.recipient,
@@ -78,10 +85,15 @@ class MessageBus:
                 timestamp=datetime.now(timezone.utc),
             )
 
-        # Dispatch with timeout
+        # Wrap the handler call with asyncio.wait_for to enforce a hard timeout.
+        # Without this, a misbehaving specialist agent could block the entire
+        # supervisor's dispatch loop indefinitely.
         try:
             response = await asyncio.wait_for(handler(message), timeout=timeout)
         except asyncio.TimeoutError:
+            # Timeout produces a structured ERROR response rather than propagating the
+            # exception — this lets dispatch_concurrent collect partial results without
+            # aborting the entire fan-out operation.
             logger.warning(
                 "Timeout dispatching to %s after %.1fs (sender=%s, message_type=%s)",
                 message.recipient,
@@ -97,6 +109,8 @@ class MessageBus:
                 timestamp=datetime.now(timezone.utc),
             )
         except Exception as exc:
+            # Catch-all ensures no handler bug can crash the bus — the bus must remain
+            # stable so other concurrent dispatches are unaffected.
             logger.warning(
                 "Handler exception for %s: %s (sender=%s, message_type=%s)",
                 message.recipient,
@@ -138,14 +152,19 @@ class MessageBus:
         Returns:
             List of response AgentMessages in the same order as the input messages.
         """
+        # Use asyncio.gather with return_exceptions=True so one failing dispatch
+        # doesn't cancel sibling tasks — partial success is better than total failure
+        # when the supervisor needs at least some specialist responses to build a report.
         tasks = [self.dispatch(msg, timeout=timeout) for msg in messages]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         responses: list[AgentMessage] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                # Should not normally reach here since dispatch() catches exceptions,
-                # but handle defensively.
+                # Defensive fallback: dispatch() already catches all exceptions internally,
+                # but gather() could surface cancellation or event-loop-level errors that
+                # bypass the handler try/except. Convert these to ERROR messages to keep
+                # the response list length consistent with the input list.
                 logger.warning(
                     "Unexpected exception in concurrent dispatch for message %d: %s",
                     i,

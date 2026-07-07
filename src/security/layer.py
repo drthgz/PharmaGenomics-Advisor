@@ -29,8 +29,15 @@ class SecurityLayer:
 
     def __init__(self, config: SecurityConfig):
         self.config = config
+        # InputValidator runs first because rejecting oversized or malicious
+        # payloads early avoids wasting cycles on expensive PHI regex scans.
         self.input_validator = InputValidator(max_chars=config.max_input_chars)
+        # PHI detection is separate from injection prevention so clinical-use
+        # environments can selectively relax PHI rules without weakening
+        # injection defenses.
         self.phi_detector = PHIDetector(clinical_use_mode=config.clinical_use_mode)
+        # Rate limiter is per-session to prevent a single user from exhausting
+        # LLM inference capacity while still allowing concurrent sessions.
         self.rate_limiter = RateLimiter(
             max_requests=config.rate_limit_requests,
             window_seconds=config.rate_limit_window_seconds,
@@ -45,9 +52,15 @@ class SecurityLayer:
                MAX_INPUT_CHARS, DATA_PERSISTENCE, AUDIT_LOG_PATH, OLLAMA_HOST,
                OLLAMA_PORT, OLLAMA_MODEL
         """
+        # Environment-based config allows Docker deployments to override
+        # security thresholds without code changes or rebuilds.
         config = SecurityConfig(
             phi_detection_enabled=True,
+            # Clinical-use mode relaxes PHI blocking so that legitimate
+            # clinical workflows (e.g., variant reports) aren't rejected.
             clinical_use_mode=os.getenv("PHI_CLINICAL_USE", "false").lower() == "true",
+            # Defaults tuned for demo workloads; production would use
+            # stricter limits sourced from a secrets manager.
             rate_limit_requests=int(os.getenv("RATE_LIMIT_REQUESTS", "100")),
             rate_limit_window_seconds=int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")),
             max_input_chars=int(os.getenv("MAX_INPUT_CHARS", "10000")),
@@ -71,17 +84,28 @@ class SecurityLayer:
         Returns:
             ValidationResult — passes if all checks succeed, fails with first error.
         """
-        # 1. Size limit and injection patterns
+        # Chain order matters: cheapest checks first (size/injection), then
+        # expensive regex-based PHI scan, then stateful rate-limit lookup.
+        # This fail-fast ordering minimizes resource use on malicious inputs.
+
+        # 1. Size limit and injection patterns — rejects prompt-injection
+        # attempts and oversized payloads before they reach downstream logic.
         result = self.input_validator.validate(input_data)
         if not result.is_valid:
+            # Early return prevents wasted PHI/rate-limit processing and
+            # ensures the audit trail captures the first failing check only.
             return result
 
-        # 2. PHI detection
+        # 2. PHI detection — uses regex heuristics for SSN, MRN, and name
+        # patterns. Runs after injection check so that injection payloads
+        # disguised as PHI don't bypass the injection filter.
         result = self.phi_detector.check(input_data)
         if not result.is_valid:
             return result
 
-        # 3. Rate limiting
+        # 3. Rate limiting — checked last because it's the only stateful
+        # operation (updates a sliding window counter). Skipping it for
+        # already-invalid inputs avoids polluting the rate-limit window.
         result = self.rate_limiter.check(session_id)
         if not result.is_valid:
             return result

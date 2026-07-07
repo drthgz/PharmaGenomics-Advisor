@@ -59,12 +59,16 @@ class PipelineOrchestrator:
         started = time.perf_counter()
         warnings: list[dict] = []
 
+        # Ollama check is optional — only needed when LLM narratives are desired;
+        # we degrade gracefully so the pipeline can still produce rule-based results
         if self.check_ollama:
             try:
                 check_ollama_ready()
             except Exception as exc:  # pragma: no cover - environment dependent
                 warnings.append({"stage": "ollama_check", "message": str(exc)})
 
+        # Security validation runs BEFORE parsing to reject malicious input early,
+        # preventing potential injection attacks from reaching the VCF parser
         raw_text = Path(vcf_path).read_text(encoding="utf-8")
         validation = self.security.validate(raw_text, session_id=session_id)
         if not validation.is_valid:
@@ -75,12 +79,15 @@ class PipelineOrchestrator:
 
         parse_result = self.parser.parse(vcf_path)
 
+        # Accumulate results across pipeline stages; each list is populated
+        # independently so a failure in one stage doesn't lose earlier results
         classifications: list[VariantClassification] = []
         recommendations: list[DrugRecommendation] = []
         literature: list[LiteratureResult] = []
         provenance: list[ProvenanceMetadata] = []
 
-        # Filter routable variants
+        # Routing stage: only variants with known gene annotations can be dispatched
+        # to specialist agents — unrouted variants are logged as warnings for reviewer visibility
         routable_variants: list[Variant] = []
         for variant in parse_result.variants:
             if variant.route_status == RouteStatus.UNROUTED or not variant.gene:
@@ -94,7 +101,9 @@ class PipelineOrchestrator:
             else:
                 routable_variants.append(variant)
 
-        # Try supervisor-based classification first; fall back to rule-based loop
+        # Classification strategy: prefer supervisor-based (multi-agent + LLM narratives)
+        # but fall back to deterministic rule-based logic if agents or LLM are unavailable.
+        # This ensures the pipeline always produces results even in degraded environments.
         try:
             classifications = self._classify_with_supervisor(routable_variants)
         except Exception as exc:
@@ -107,7 +116,8 @@ class PipelineOrchestrator:
                 classification = self._classify_variant(variant, warnings)
                 classifications.append(classification)
 
-        # Build provenance and recommendations from classifications
+        # Provenance tracking: record which agent and data sources contributed to each
+        # classification — required for audit trail and reviewer transparency
         for i, variant in enumerate(routable_variants):
             classification = classifications[i]
             provenance.append(
@@ -118,10 +128,14 @@ class PipelineOrchestrator:
                 )
             )
 
+            # Only pathogenic/likely-pathogenic variants trigger drug lookups —
+            # VUS variants lack sufficient evidence for pharmacogenomic action
             if classification.classification in ACTIONABLE_CLASSES:
                 variant_recs = self._recommend_drugs(variant, classification, warnings)
                 recommendations.extend(variant_recs)
 
+        # Literature retrieval is gated on having recommendations — no point querying
+        # the RAG corpus if there are no actionable drug-gene pairs to evidence
         if recommendations:
             literature = self.literature.retrieve(recommendations)
             provenance.append(
@@ -132,6 +146,8 @@ class PipelineOrchestrator:
                 )
             )
 
+        # Report assembly: gather all stage outputs into a single immutable report object.
+        # Markdown rendering happens last so it can reflect the complete pipeline state.
         elapsed = time.perf_counter() - started
         report = ClinicalReport(
             total_execution_time_seconds=elapsed,
@@ -163,8 +179,8 @@ class PipelineOrchestrator:
         Raises:
             Any exception if the supervisor-based classification fails.
         """
-        # Deferred imports to avoid circular dependency
-        # (handlers and supervisor import from this module)
+        # Deferred imports to avoid circular dependency — handlers and supervisor
+        # reference models defined alongside this module's imports
         from src.agents.handlers import brca_handler, egfr_handler, tp53_handler
         from src.agents.message_bus import MessageBus
         from src.agents.supervisor import SupervisorAgent
@@ -178,10 +194,14 @@ class PipelineOrchestrator:
         llm_client = LLMInferenceClient()
         supervisor = SupervisorAgent(bus, llm_client)
 
+        # Run the async supervisor workflow synchronously — the pipeline's top-level
+        # entry is sync, but agents use async internally for concurrent dispatch
         classifications = asyncio.run(supervisor.analyze_variants(variants))
         return classifications
 
     def _classify_variant(self, variant: Variant, warnings: list[dict]) -> VariantClassification:
+        # ClinVar lookup happens first because its curated evidence informs the
+        # final classification confidence — rule-based logic alone is less reliable
         clinvar = asyncio.run(lookup_clinvar(variant))
         data_sources = ["local_rules"]
         limitations: list[str] = []
@@ -189,6 +209,8 @@ class PipelineOrchestrator:
 
         if clinvar.get("status") == "success":
             data_sources.append("clinvar")
+            # Cap at 2 results to keep the evidence list concise for report readability;
+            # additional ClinVar entries rarely change the clinical interpretation
             for result in clinvar.get("results", [])[:2]:
                 significance = result.get("clinical_significance", "unknown")
                 review = result.get("review_status", "unknown")
@@ -196,6 +218,8 @@ class PipelineOrchestrator:
         elif clinvar.get("status") == "disabled":
             limitations.append("ClinVar online lookup disabled")
         else:
+            # Record the failure as both a limitation and a warning — limitations appear
+            # in the classification output, warnings appear in the pipeline summary
             limitations.append("ClinVar unavailable or no records found")
             warnings.append(
                 {
@@ -205,6 +229,8 @@ class PipelineOrchestrator:
                 }
             )
 
+        # Combine rule-based classification with gene-specific annotations;
+        # therapeutic relevance and functional status are only set for EGFR/TP53 respectively
         classification, confidence = _rule_based_acmg(variant)
         therapeutic_relevance = _egfr_therapeutic_relevance(variant)
         functional_status = _tp53_functional_status(variant)
@@ -231,10 +257,14 @@ class PipelineOrchestrator:
         classification: VariantClassification,
         warnings: list[dict],
     ) -> list[DrugRecommendation]:
+        # Query both CPIC and PharmGKB in sequence — each provides complementary
+        # drug-gene interaction data from different curation methodologies
         cpic_result = asyncio.run(lookup_cpic_guidelines(variant.gene or ""))
         pharmgkb_result = asyncio.run(lookup_pharmgkb_annotations(variant.gene or ""))
 
         recommendations: list[DrugRecommendation] = []
+        # Deduplication via seen_keys prevents the same gene-drug pair from appearing
+        # twice when both CPIC and PharmGKB report overlapping guideline entries
         seen_keys: set[tuple[str, str]] = set()
 
         if cpic_result.get("status") == "success":
@@ -255,6 +285,8 @@ class PipelineOrchestrator:
                     )
                 )
 
+        # PharmGKB is only consulted for EGFR TKI-sensitive variants — other genes
+        # rely solely on CPIC guidelines to avoid noisy/irrelevant annotations
         if (
             variant.gene == "EGFR"
             and classification.therapeutic_relevance == TherapeuticRelevance.TKI_SENSITIVE
@@ -278,6 +310,8 @@ class PipelineOrchestrator:
                 )
 
         if not recommendations:
+            # Surface the absence of guidelines as a warning rather than silently omitting —
+            # reviewers need visibility into which variants lacked pharmacogenomic coverage
             warnings.append(
                 {
                     "stage": "pgx",
@@ -359,6 +393,8 @@ def _to_action(value: str) -> RecommendationAction:
 def render_markdown_report(report: ClinicalReport) -> str:
     """Render a concise Markdown summary for human review."""
     lines: list[str] = []
+    # Header section includes key metrics upfront so reviewers can assess
+    # pipeline completeness at a glance without scrolling through details
     lines.append("# PharmaGenomics Advisor Clinical Report")
     lines.append("")
     lines.append(f"- Report ID: {report.report_id}")
