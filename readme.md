@@ -1,4 +1,5 @@
 # 🧬 PharmaGenomics Advisor
+![logo](docs/assets/logo.png)
 
 **Multi-Agent Precision Medicine Pipeline — From Cancer Variants to Drug Recommendations in Minutes**
 
@@ -145,18 +146,6 @@ All property tests live in the `tests/properties/` directory and cover:
 Each property runs with a minimum of **100 examples** per invocation (configured via Hypothesis settings), ensuring broad coverage of edge cases that hand-written examples would miss.
 
 Run property tests with: `pytest tests/properties/ -v`
-
----
-
-## Visual Assets
-
-![Kaggle Cover](docs/assets/kaggle-cover.png)
-
-![Pipeline Architecture](docs/assets/pipeline-architecture.png)
-
-![Report Preview](docs/assets/report-preview.png)
-
-![YouTube Thumbnail Candidate](docs/assets/youtube-thumbnail.png)
 
 ---
 
