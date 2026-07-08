@@ -51,8 +51,6 @@ python3 scripts/demo.py --runtime adk
 # Optional: run storytelling demo with resistant EGFR + unrouted gene
 python3 scripts/demo.py --vcf data/samples/sample_variants_storytelling.vcf
 
-# Generate Kaggle-ready media assets (cover + architecture + report preview + thumbnail)
-python3 scripts/generate_media_assets.py
 ```
 
 ---
