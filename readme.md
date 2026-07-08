@@ -155,6 +155,9 @@ Run property tests with: `pytest tests/properties/ -v`
 - `data/samples/sample_variants_storytelling.vcf`: storytelling path with EGFR T790M (resistant), KRAS unrouted, and BRCA1 actionable continuity
 
 ---
+<iframe width="560" height="315" src="https://youtu.be/nuYMoqZDLuc" frameborder="0" allowfullscreen></iframe>
+
+---
 
 ## Course Concepts Demonstrated
 
@@ -226,7 +229,7 @@ pharmagenomics-advisor/
 ---
 
 ## Competition Links
-
+- [Youtube Video](https://youtu.be/nuYMoqZDLuc)
 - [Capstone Challenge](https://www.kaggle.com/competitions/vibecoding-agents-capstone-project)
 - [5-Day Course](https://www.kaggle.com/competitions/5-day-ai-agents-intensive-vibecoding-course-with-google/overview)
 - [Prior Work: OffBioMedlines](https://github.com/drthgz/OffBioMedlines)
