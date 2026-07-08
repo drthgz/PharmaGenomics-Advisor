@@ -1,5 +1,5 @@
 # 🧬 PharmaGenomics Advisor
-![logo](docs/assets/logo.png)
+[![PharmaGenomics Advisor: Offline MedGemma with ADK, MCP, Agent Skills, Ollama, and Spec Driven Dev](docs/assets/logo.png)](https://youtu.be/nuYMoqZDLuc)
 
 **Multi-Agent Precision Medicine Pipeline — From Cancer Variants to Drug Recommendations in Minutes**
 
@@ -151,9 +151,6 @@ Run property tests with: `pytest tests/properties/ -v`
 
 - `data/samples/sample_variants.vcf`: baseline happy path (BRCA1, EGFR L858R, TP53)
 - `data/samples/sample_variants_storytelling.vcf`: storytelling path with EGFR T790M (resistant), KRAS unrouted, and BRCA1 actionable continuity
-
----
-<iframe width="560" height="315" src="https://youtu.be/nuYMoqZDLuc" frameborder="0" allowfullscreen></iframe>
 
 ---
 
